@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Library, AlertTriangle } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -55,7 +56,8 @@ export default async function SetsPage() {
               const ownedCount = owned.get(normalizeSetName(set.name)) ?? 0;
               return (
                 <li key={set.id}>
-                  <Card className="flex h-full flex-col gap-3 p-5">
+                  <Link href={`/sets/${set.id}`} className="block h-full">
+                  <Card className="flex h-full flex-col gap-3 p-5 transition-colors hover:border-white/20 hover:bg-elevated">
                     <div className="flex h-16 items-center">
                       {set.logo ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -84,6 +86,7 @@ export default async function SetsPage() {
                       )}
                     </div>
                   </Card>
+                  </Link>
                 </li>
               );
             })}

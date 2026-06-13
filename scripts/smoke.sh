@@ -67,6 +67,13 @@ echo "==> fetch /sets (public Pokémon sets)"
 code=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "${BASE}/sets")
 [ "$code" = "200" ] || { echo "FAIL: /sets returned $code"; exit 1; }
 
+echo "==> signed-in / should redirect to /collection (collection-first)"
+loc=$(curl -s -o /dev/null -w '%{redirect_url}' -b "$JAR" "${BASE}/")
+case "$loc" in
+  */collection) echo "    / -> $loc" ;;
+  *) echo "FAIL: signed-in / did not redirect to /collection (got '$loc')"; exit 1 ;;
+esac
+
 echo "==> seed admin + verify admin user exists"
 # The standalone image has no npm scripts / prisma-seed config, so run tsx directly.
 $DC exec -T -e ADMIN_EMAIL="${ADMIN_EMAIL:-admin@tcg.local}" -e ADMIN_PASSWORD="${ADMIN_PASSWORD:-change-me-admin}" \
