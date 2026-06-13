@@ -16,6 +16,8 @@ services:
     env_file: .env
     environment:
       INFERENCE_URL: http://inference:8001
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -53,3 +55,4 @@ volumes:
   caddy_data:
   pgdata:
   models:
+  uploads:
