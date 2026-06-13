@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(USER)
+  createdAt    DateTime  @default(now())
+  scans        Scan[]
+  sessions     Session[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Scan {
+  id           String   @id @default(cuid())
+  userId       String
+  imagePath    String
+  predictions  Json
+  modelVersion String
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ModelVersion {
+  id          String   @id @default(cuid())
+  version     String   @unique
+  metrics     Json
+  datasetSize Int      @default(0)
+  isCurrent   Boolean  @default(false)
+  trainedAt   DateTime @default(now())
+}
