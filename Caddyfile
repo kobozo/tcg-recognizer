@@ -1,7 +1,18 @@
 {
-	auto_https off
+	# Keep TLS provisioning (internal CA) but don't force http->https,
+	# so plain http://<lan-ip> still works for CI/smoke while https is
+	# available for camera access (getUserMedia needs a secure context).
+	auto_https disable_redirects
 }
 
+# Plain HTTP (used by CI smoke and as a fallback).
 :80 {
+	reverse_proxy web:3000
+}
+
+# HTTPS with a locally-trusted internal cert. Camera scanning requires this.
+# Accept the self-signed cert once in your browser.
+https://192.168.3.177, https://localhost {
+	tls internal
 	reverse_proxy web:3000
 }
