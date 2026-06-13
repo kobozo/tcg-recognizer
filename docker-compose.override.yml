@@ -1,0 +1,14 @@
+services:
+  web:
+    build:
+      context: ./apps/web
+      target: build
+    command: npm run dev
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+  inference:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+    volumes:
+      - ./services/inference/app:/app/app
