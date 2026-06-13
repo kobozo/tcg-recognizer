@@ -10,7 +10,7 @@ const PAD = { top: 16, right: 16, bottom: 40, left: 36 };
 export default function SignupChart({ data }: Props) {
   if (!data || data.length === 0) {
     return (
-      <div className="flex h-40 items-center justify-center rounded border border-dashed border-gray-300 text-sm text-gray-500">
+      <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted">
         No signups yet.
       </div>
     );
@@ -54,14 +54,14 @@ export default function SignupChart({ data }: Props) {
           y1={PAD.top}
           x2={PAD.left}
           y2={PAD.top + innerH}
-          stroke="#d1d5db"
+          stroke="rgba(148,163,184,.2)"
         />
         <line
           x1={PAD.left}
           y1={PAD.top + innerH}
           x2={PAD.left + innerW}
           y2={PAD.top + innerH}
-          stroke="#d1d5db"
+          stroke="rgba(148,163,184,.2)"
         />
 
         {/* daily bars */}
@@ -74,7 +74,7 @@ export default function SignupChart({ data }: Props) {
               y={yBar(d.count)}
               width={barW}
               height={Math.max(0, h)}
-              fill="#93c5fd"
+              fill="#10b981"
             >
               <title>{`${d.day}: ${d.count} signup(s)`}</title>
             </rect>
@@ -82,9 +82,9 @@ export default function SignupChart({ data }: Props) {
         })}
 
         {/* cumulative line */}
-        <path d={linePath} fill="none" stroke="#2563eb" strokeWidth={2} />
+        <path d={linePath} fill="none" stroke="#f59e0b" strokeWidth={2} />
         {cumulative.map((v, i) => (
-          <circle key={data[i].day} cx={xAt(i)} cy={yLine(v)} r={2.5} fill="#2563eb">
+          <circle key={data[i].day} cx={xAt(i)} cy={yLine(v)} r={2.5} fill="#f59e0b">
             <title>{`${data[i].day}: ${v} total`}</title>
           </circle>
         ))}
@@ -98,7 +98,7 @@ export default function SignupChart({ data }: Props) {
               x={xAt(i)}
               y={H - 12}
               textAnchor="middle"
-              className="fill-gray-500"
+              className="fill-muted"
               fontSize={10}
             >
               {d.day.slice(5)}
@@ -106,12 +106,12 @@ export default function SignupChart({ data }: Props) {
           );
         })}
       </svg>
-      <div className="mt-2 flex gap-4 text-xs text-gray-600">
+      <div className="mt-2 flex gap-4 text-xs text-muted">
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-3 bg-blue-300" /> Daily
+          <span className="inline-block h-2 w-3 bg-emerald-500" /> Daily
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block h-0.5 w-3 bg-blue-600" /> Cumulative
+          <span className="inline-block h-0.5 w-3 bg-amber-500" /> Cumulative
         </span>
       </div>
     </div>

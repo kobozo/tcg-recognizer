@@ -1,8 +1,12 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import path from "node:path";
+import { ArrowLeft } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import CardProfile from "@/components/CardProfile";
+import Container from "@/components/ui/Container";
+import { buttonVariants } from "@/components/ui/Button";
 import type { CardPredictions, Enrichment } from "@/lib/types";
 
 type StoredPredictions = CardPredictions & { enrichment?: Enrichment | null };
@@ -24,13 +28,25 @@ export default async function ScanResultPage({
   const fileName = path.basename(scan.imagePath);
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-12">
-      <h1 className="text-2xl font-bold">Card profile</h1>
-      <CardProfile
-        imageSrc={`/api/uploads/${fileName}`}
-        predictions={predictions}
-        enrichment={enrichment}
-      />
-    </main>
+    <Container className="py-10 sm:py-14">
+      <div className="mx-auto flex max-w-4xl flex-col gap-6 animate-fade-up">
+        <div className="flex flex-col gap-3">
+          <Link
+            href="/scan"
+            className={buttonVariants({ variant: "ghost", size: "sm", className: "w-fit -ml-3" })}
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden /> Back to scan
+          </Link>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            Card profile
+          </h1>
+        </div>
+        <CardProfile
+          imageSrc={`/api/uploads/${fileName}`}
+          predictions={predictions}
+          enrichment={enrichment}
+        />
+      </div>
+    </Container>
   );
 }
