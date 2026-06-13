@@ -18,14 +18,14 @@ export default function ScanPage() {
       <div className="mx-auto max-w-3xl animate-fade-up">
         <div className="mb-8 text-center">
           <Badge tone="primary" className="mb-4">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Live scan
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Add to collection
           </Badge>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Scan a Pokémon card
+            Add a card to your collection
           </h1>
           <p className="mx-auto mt-3 max-w-lg text-muted">
-            Hold a card up to your camera and capture it — no typing, no guessing. We&apos;ll
-            identify it in seconds.
+            Hold a card up to your camera and capture it — we&apos;ll recognize it and drop it
+            straight into your collection.
           </p>
         </div>
 

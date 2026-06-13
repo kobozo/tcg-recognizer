@@ -59,3 +59,46 @@ export async function listSets(): Promise<PokemonSet[]> {
 export function normalizeSetName(value: string): string {
   return value.toLowerCase().replace(/\bset\b/g, "").replace(/[^a-z0-9]/g, "").trim();
 }
+
+export type PokemonCard = {
+  id: string;
+  name: string;
+  number: string;
+  rarity?: string;
+  image?: string;
+};
+
+type ApiCard = {
+  id: string;
+  name: string;
+  number?: string;
+  rarity?: string;
+  images?: { small?: string; large?: string };
+};
+
+/** List the cards in a given set (for set-completion views). [] on error. */
+export async function getSetCards(setId: string): Promise<PokemonCard[]> {
+  try {
+    const res = await fetch(
+      `${API}/cards?q=set.id:${encodeURIComponent(setId)}&pageSize=250&orderBy=number&select=id,name,number,rarity,images`,
+      { headers: headers(), next: { revalidate: 86400 }, signal: AbortSignal.timeout(10000) },
+    );
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data: ApiCard[] };
+    return json.data.map((c) => ({
+      id: c.id,
+      name: c.name,
+      number: c.number ?? "",
+      rarity: c.rarity,
+      image: c.images?.small,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Fetch a single set by id. null on error/not found. */
+export async function getSet(setId: string): Promise<PokemonSet | null> {
+  const all = await listSets();
+  return all.find((s) => s.id === setId) ?? null;
+}

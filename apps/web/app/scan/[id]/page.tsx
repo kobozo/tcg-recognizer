@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import path from "node:path";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Check, Boxes, Camera } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import CardProfile from "@/components/CardProfile";
@@ -30,16 +30,29 @@ export default async function ScanResultPage({
   return (
     <Container className="py-10 sm:py-14">
       <div className="mx-auto flex max-w-4xl flex-col gap-6 animate-fade-up">
-        <div className="flex flex-col gap-3">
-          <Link
-            href="/scan"
-            className={buttonVariants({ variant: "ghost", size: "sm", className: "w-fit -ml-3" })}
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden /> Back to scan
-          </Link>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Card profile
-          </h1>
+        <Link
+          href="/collection"
+          className={buttonVariants({ variant: "ghost", size: "sm", className: "w-fit -ml-3" })}
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden /> Back to collection
+        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/20 text-emerald-300">
+              <Check className="h-5 w-5" aria-hidden />
+            </span>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              Added to your collection
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/collection" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              <Boxes className="h-4 w-4" aria-hidden /> View collection
+            </Link>
+            <Link href="/scan" className={buttonVariants({ variant: "primary", size: "sm" })}>
+              <Camera className="h-4 w-4" aria-hidden /> Add another
+            </Link>
+          </div>
         </div>
         <CardProfile
           imageSrc={`/api/uploads/${fileName}`}

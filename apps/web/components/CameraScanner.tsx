@@ -198,7 +198,7 @@ export default function CameraScanner() {
           <div className="absolute inset-0 grid place-items-center bg-background/70 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-2 text-sm text-foreground">
               <Sparkles className="h-7 w-7 animate-pulse text-accent" aria-hidden />
-              Recognizing card…
+              Adding to your collection…
             </div>
           </div>
         )}
@@ -252,7 +252,7 @@ export default function CameraScanner() {
         {phase === "captured" && (
           <>
             <Button onClick={submit} size="lg" className="min-w-44">
-              <Sparkles className="h-5 w-5" aria-hidden /> Recognize card
+              <Sparkles className="h-5 w-5" aria-hidden /> Add to collection
             </Button>
             <Button variant="outline" size="lg" onClick={retake}>
               <RefreshCw className="h-5 w-5" aria-hidden /> Retake
