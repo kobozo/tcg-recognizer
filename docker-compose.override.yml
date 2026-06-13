@@ -3,11 +3,22 @@ services:
     build:
       context: ./apps/web
       target: build
-    command: npm run dev
+    # Apply DB migrations before dev (the prod CMD does this, but the dev
+    # override replaces it), otherwise the schema is empty and auth/scan fail.
+    command: sh -c "npx prisma migrate deploy && npm run dev"
     volumes:
       - ./apps/web:/app
       - /app/node_modules
       - /app/.next
+      - uploads:/app/uploads
+    # The dev image uses the `build` stage, which has no HEALTHCHECK (that lives
+    # in the prod `runner` stage), so define one here or the proxy won't start.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 15
+      start_period: 20s
   inference:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
     volumes:
