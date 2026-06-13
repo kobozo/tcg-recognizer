@@ -1,0 +1,11 @@
+services:
+  web:
+    restart: always
+  inference:
+    restart: always
+  proxy:
+    restart: always
+  db:
+    restart: always
+  sentinel:
+    restart: always
