@@ -1,5 +1,13 @@
 import Link from "next/link";
+import { Users, BarChart3, Cpu } from "lucide-react";
 import { requireAdmin } from "@/lib/admin";
+import Container from "@/components/ui/Container";
+
+const navItems = [
+  { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/metrics", label: "Metrics", icon: BarChart3 },
+  { href: "/admin/mlops", label: "MLOps", icon: Cpu },
+];
 
 export default async function AdminLayout({
   children,
@@ -9,20 +17,22 @@ export default async function AdminLayout({
   await requireAdmin();
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
-      <h1 className="mb-4 text-2xl font-bold">Admin</h1>
-      <nav className="mb-6 flex gap-4 border-b border-gray-200 pb-3 text-sm">
-        <Link href="/admin/users" className="text-gray-700 hover:text-blue-600">
-          Users
-        </Link>
-        <Link href="/admin/metrics" className="text-gray-700 hover:text-blue-600">
-          Metrics
-        </Link>
-        <Link href="/admin/mlops" className="text-gray-700 hover:text-blue-600">
-          MLOps
-        </Link>
-      </nav>
-      {children}
-    </div>
+    <Container className="py-8 sm:py-10">
+      <div className="animate-fade-up">
+        <h1 className="mb-5 text-2xl font-semibold tracking-tight sm:text-3xl">Admin</h1>
+        <nav className="mb-8 flex gap-2 border-b border-border pb-3 text-sm">
+          {navItems.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 font-medium text-muted transition-colors hover:bg-white/5 hover:text-foreground"
+            >
+              <Icon className="h-4 w-4" aria-hidden /> {label}
+            </Link>
+          ))}
+        </nav>
+        {children}
+      </div>
+    </Container>
   );
 }

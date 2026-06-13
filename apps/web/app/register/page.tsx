@@ -2,6 +2,16 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import Link from "next/link";
+import Button from "@/components/ui/Button";
+import Input, { Label } from "@/components/ui/Input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/Card";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -40,58 +50,60 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-md flex-col gap-6 px-4 py-12">
-      <h1 className="text-2xl font-bold">Create your account</h1>
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="email" className="text-sm font-medium">
-            Email
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="password" className="text-sm font-medium">
-            Password
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-          />
-        </div>
-        {error && (
-          <p role="alert" className="text-sm text-red-600">
-            {error}
+    <main className="flex min-h-[80vh] items-center justify-center px-4 py-12">
+      <Card className="w-full max-w-md animate-fade-up">
+        <CardHeader>
+          <CardTitle className="text-2xl">Create your account</CardTitle>
+          <CardDescription>
+            Start recognizing cards in seconds.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            {error && (
+              <p role="alert" className="text-sm text-red-300">
+                {error}
+              </p>
+            )}
+            <Button type="submit" disabled={submitting} size="lg">
+              {submitting ? "Creating account…" : "Create account"}
+            </Button>
+          </form>
+          <p className="mt-6 text-sm text-muted">
+            Already have an account?{" "}
+            <Link
+              href="/login"
+              className="font-medium text-emerald-300 hover:text-emerald-200"
+            >
+              Log in
+            </Link>
           </p>
-        )}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? "Creating account…" : "Create account"}
-        </button>
-      </form>
-      <p className="text-sm text-gray-600">
-        Already have an account?{" "}
-        <a href="/login" className="text-blue-600 hover:underline">
-          Log in
-        </a>
-      </p>
+        </CardContent>
+      </Card>
     </main>
   );
 }

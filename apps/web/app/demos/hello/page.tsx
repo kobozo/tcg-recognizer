@@ -17,7 +17,7 @@ export default function HelloDemoPage() {
         site header are handled for you, so your page always fits in with the
         rest of the site.
       </p>
-      <p>Have fun, and build something cool. 🎉</p>
+      <p>Have fun, and build something cool.</p>
     </DemoLayout>
   );
 }

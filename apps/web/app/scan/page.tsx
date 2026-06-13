@@ -1,103 +1,58 @@
-"use client";
+import type { Metadata } from "next";
+import { Camera, Cpu, Database } from "lucide-react";
+import Container from "@/components/ui/Container";
+import Badge from "@/components/ui/Badge";
+import CameraScanner from "@/components/CameraScanner";
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+export const metadata: Metadata = { title: "Scan a card · TCG Recognizer" };
+
+const steps = [
+  { icon: Camera, title: "Capture", text: "Frame the card with your camera" },
+  { icon: Cpu, title: "Recognize", text: "The model reads name, type, set & rarity" },
+  { icon: Database, title: "Enrich", text: "We add HP, attacks & price from the TCG API" },
+];
 
 export default function ScanPage() {
-  const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [hasFile, setHasFile] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setError(null);
-    const file = e.target.files?.[0];
-    if (!file) {
-      setPreview(null);
-      setHasFile(false);
-      return;
-    }
-    setHasFile(true);
-    setPreview(URL.createObjectURL(file));
-  }
-
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-
-    const file = fileRef.current?.files?.[0];
-    if (!file) {
-      setError("Please choose an image first.");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const form = new FormData();
-      form.append("image", file);
-
-      const res = await fetch("/api/scan", { method: "POST", body: form });
-
-      if (res.status === 401) {
-        setError("Your session expired. Please log in again.");
-        setSubmitting(false);
-        return;
-      }
-      if (!res.ok) {
-        setError("Could not scan the card. Please try again.");
-        setSubmitting(false);
-        return;
-      }
-
-      const { id } = (await res.json()) as { id: string };
-      router.push(`/scan/${id}`);
-    } catch {
-      setError("Something went wrong. Please try again.");
-      setSubmitting(false);
-    }
-  }
-
   return (
-    <main className="mx-auto flex max-w-xl flex-col gap-6 px-4 py-12">
-      <h1 className="text-2xl font-bold">Scan a card</h1>
-      <p className="text-sm text-gray-600">
-        Upload a photo of a Pokémon card to identify it.
-      </p>
-
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          onChange={onFileChange}
-          className="block w-full text-sm text-gray-700 file:mr-4 file:rounded file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-blue-700"
-        />
-
-        {preview && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={preview}
-            alt="Selected card preview"
-            className="max-h-80 w-full rounded-lg border border-gray-200 object-contain"
-          />
-        )}
-
-        {error && (
-          <p role="alert" className="text-sm text-red-600">
-            {error}
+    <Container className="py-10 sm:py-14">
+      <div className="mx-auto max-w-3xl animate-fade-up">
+        <div className="mb-8 text-center">
+          <Badge tone="primary" className="mb-4">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Live scan
+          </Badge>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            Scan a Pokémon card
+          </h1>
+          <p className="mx-auto mt-3 max-w-lg text-muted">
+            Hold a card up to your camera and capture it — no typing, no guessing. We&apos;ll
+            identify it in seconds.
           </p>
-        )}
+        </div>
 
-        <button
-          type="submit"
-          disabled={submitting || !hasFile}
-          className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? "Scanning…" : "Scan card"}
-        </button>
-      </form>
-    </main>
+        <div className="surface-panel p-5 sm:p-7">
+          <CameraScanner />
+        </div>
+
+        <div className="mt-8 grid gap-3 sm:grid-cols-3">
+          {steps.map((s, i) => (
+            <div
+              key={s.title}
+              className="flex items-start gap-3 rounded-xl border border-border bg-surface/50 p-4"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/5 text-accent">
+                <s.icon className="h-5 w-5" aria-hidden />
+              </span>
+              <div>
+                <p className="text-sm font-medium">
+                  <span className="text-muted">{i + 1}. </span>
+                  {s.title}
+                </p>
+                <p className="text-sm text-muted">{s.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Container>
   );
 }
