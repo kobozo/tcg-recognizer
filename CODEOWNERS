@@ -1,0 +1,24 @@
+# Code ownership for the TCG project.
+#
+# @kobozo owns the infrastructure, CI, services and the core web app
+# (lib + API routes). Demo pages under app/demos/ are intentionally left
+# open so community contributors can self-merge their own pages.
+
+# Root config files
+/*                          @kobozo
+
+# CI / GitHub config
+/.github/                   @kobozo
+
+# Docker compose stacks
+/docker-compose*            @kobozo
+
+# Backend / inference services
+/services/                  @kobozo
+
+# Core web app: shared library + API routes
+/apps/web/lib/              @kobozo
+/apps/web/app/api/          @kobozo
+
+# Community demos are OPEN — no required owner, contributors self-merge.
+# (No CODEOWNERS rule here means no required review for this path.)
