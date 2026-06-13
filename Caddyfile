@@ -3,6 +3,11 @@
 	# so plain http://<lan-ip> still works for CI/smoke while https is
 	# available for camera access (getUserMedia needs a secure context).
 	auto_https disable_redirects
+	# Use Caddy's internal CA for all certs (no public ACME on a LAN).
+	local_certs
+	# Browsers/curl don't send SNI for bare-IP HTTPS URLs, so serve the
+	# LAN-IP certificate by default when no SNI is presented.
+	default_sni 192.168.3.177
 }
 
 # Plain HTTP (used by CI smoke and as a fallback).
@@ -10,8 +15,8 @@
 	reverse_proxy web:3000
 }
 
-# HTTPS with a locally-trusted internal cert. Camera scanning requires this.
-# Accept the self-signed cert once in your browser.
+# HTTPS with a locally-trusted internal cert (accept it once in the browser).
+# Camera scanning requires a secure context.
 https://192.168.3.177, https://localhost {
 	tls internal
 	reverse_proxy web:3000
