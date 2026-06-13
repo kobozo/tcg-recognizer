@@ -59,6 +59,10 @@ echo "==> fetch result page /scan/${SCAN_ID}"
 code=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "${BASE}/scan/${SCAN_ID}")
 [ "$code" = "200" ] || { echo "FAIL: result page returned $code"; exit 1; }
 
+echo "==> fetch /account (My scans)"
+code=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "${BASE}/account")
+[ "$code" = "200" ] || { echo "FAIL: /account returned $code"; exit 1; }
+
 echo "==> seed admin + verify admin user exists"
 # The standalone image has no npm scripts / prisma-seed config, so run tsx directly.
 $DC exec -T -e ADMIN_EMAIL="${ADMIN_EMAIL:-admin@tcg.local}" -e ADMIN_PASSWORD="${ADMIN_PASSWORD:-change-me-admin}" \
