@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
   // Predict (stubbed inference) then best-effort enrichment.
   const predictions = (await predictCard(image, game)) as CardPredictions;
-  const enrichment = await enrichCard(predictions.name.value);
+  const enrichment = await enrichCard(predictions.name.value, game);
 
   const scan = await db.scan.create({
     data: {

@@ -110,7 +110,7 @@ describe("POST /api/scan", () => {
     expect(body.id).toBe("scan_1");
 
     expect(predictCardMock).toHaveBeenCalledTimes(1);
-    expect(enrichCardMock).toHaveBeenCalledWith("Pikachu");
+    expect(enrichCardMock).toHaveBeenCalledWith("Pikachu", "pokemon");
 
     expect(scanCreateMock).toHaveBeenCalledTimes(1);
     const arg = scanCreateMock.mock.calls[0][0] as {

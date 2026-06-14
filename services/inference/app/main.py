@@ -18,10 +18,10 @@ STUBS = {
         "card_number": field("4/102", 0.66),
     },
     "magic": {
-        "name": {"candidates": [field("Black Lotus", 0.9)], **field("Black Lotus", 0.9)},
+        "name": {"candidates": [field("Sol Ring", 0.9)], **field("Sol Ring", 0.9)},
         "type": field("Artifact", 0.95),
-        "set": field("Limited Edition Alpha", 0.7),
-        "rarity": field("Rare", 0.8),
+        "set": field("Commander", 0.7),
+        "rarity": field("Uncommon", 0.8),
         "card_number": field("232", 0.6),
     },
 }

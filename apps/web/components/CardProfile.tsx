@@ -1,6 +1,7 @@
 import { BadgeCheck, Sparkles } from "lucide-react";
 import ConfidenceBar from "@/components/ConfidenceBar";
 import Badge from "@/components/ui/Badge";
+import { formatMoney } from "@/lib/format";
 import type { CardPredictions, Enrichment, Prediction } from "@/lib/types";
 
 type Props = {
@@ -82,8 +83,16 @@ export default function CardProfile({ imageSrc, predictions, enrichment }: Props
         {enrichment && (
           <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
-              <BadgeCheck className="h-4 w-4" aria-hidden /> Verified from Pokémon TCG API
+              <BadgeCheck className="h-4 w-4" aria-hidden /> Verified market data
             </p>
+            {typeof enrichment.price === "number" && (
+              <div className="mt-2 flex items-baseline justify-between gap-4 border-b border-emerald-400/20 pb-2">
+                <span className="text-sm font-medium text-emerald-300/90">Estimated value</span>
+                <span className="text-2xl font-bold text-emerald-200">
+                  {formatMoney(enrichment.price, enrichment.currency)}
+                </span>
+              </div>
+            )}
             <dl className="mt-2 flex flex-col gap-1 text-sm text-emerald-100">
               {enrichment.hp && (
                 <div className="flex justify-between gap-4">
