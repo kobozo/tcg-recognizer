@@ -5,6 +5,7 @@ import path from "node:path";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { predictCard } from "@/lib/inference";
+import { ocrChannel, mergeOcrCandidates } from "@/lib/ocrChannel";
 import { enrichCard } from "@/lib/enrich";
 import { isGameEnabled } from "@/lib/games";
 import type { CardPredictions } from "@/lib/types";
@@ -60,6 +61,20 @@ export async function POST(req: Request) {
 
   // Predict (stubbed inference) then best-effort enrichment.
   const predictions = (await predictCard(image, game, embedding)) as CardPredictions;
+
+  // Opt-in OCR + Qdrant text channel (extras): fold its top matches in as extra
+  // candidates. When the user confirms/corrects one, it becomes a Feedback row
+  // the trainer folds into the index — that's how this extra teaches the model.
+  const ocr = await ocrChannel(image, game);
+  if (ocr) {
+    predictions.name.candidates = mergeOcrCandidates(
+      predictions.name.candidates,
+      ocr.candidates,
+      predictions.name.value,
+    );
+    predictions.ocr = { text: ocr.text, source: "qdrant" };
+  }
+
   const enrichment = await enrichCard(predictions.name.value, game);
 
   const scan = await db.scan.create({

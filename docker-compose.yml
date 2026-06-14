@@ -88,9 +88,30 @@ services:
       mlflow:
         condition: service_started
 
+  # --- OPT-IN: OCR + Qdrant text-search subsystem (profile `extras`) ---
+  # An extra recognition channel: OCR cards -> text -> vector -> Qdrant search.
+  # Gated behind `extras` so the default `docker compose up` and CI are unchanged.
+  qdrant:
+    image: qdrant/qdrant:latest
+    profiles: ["extras"]
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+
+  ocr:
+    build: ./services/ocr
+    profiles: ["extras"]
+    env_file: .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
 volumes:
   caddy_data:
   pgdata:
   models:
   uploads:
   mlflow_data:
+  qdrant_storage:
