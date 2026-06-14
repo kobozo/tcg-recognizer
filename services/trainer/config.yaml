@@ -12,3 +12,8 @@ embed_dim: 512    # classical visual descriptor dimensionality (pgvector vector(
 eval_cards: 500   # distinct indexed cards evaluated (stride-sampled across sets)
 eval_views: 3     # synthetic phone-photos generated per card
 eval_seed: 1234   # makes the eval reproducible / runs comparable
+
+# --- Geometric re-ranking (sub-project 2) ---
+# 0 = off. When >0, the embedding shortlist's top-K is re-ordered by ORB+RANSAC
+# homography inliers; the eval then also reports rerank_recall_at_1/@5.
+rerank_top_k: 0
