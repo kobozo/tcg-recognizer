@@ -155,10 +155,57 @@ def embed(pil_image) -> list[float]:
     transparent fall-back to the classical descriptor if the model cannot be
     loaded); anything else (the default ``classical``) uses the hand-crafted
     descriptor. Always returns exactly 512 floats.
+
+    When ``EMBED_HEAD`` points at a trained projection head (sub-project 3), it
+    is applied on top of the onnx embedding so index + query share the learned,
+    augmentation-invariant space.
     """
     if os.environ.get("EMBEDDER", "classical").strip().lower() == "onnx":
-        return _embed_onnx(pil_image)
+        vec = _embed_onnx(pil_image)
+        head = _load_head()
+        return _apply_head(vec, head) if head is not None else vec
     return _embed_classical(pil_image)
+
+
+# ---------------------------------------------------------------------------
+# Learned projection head (sub-project 3): a tiny MLP trained with metric
+# learning to pull a card's augmented views toward its reference. Trained with
+# torch (train_head.py) but APPLIED here in pure numpy, so the inference path
+# needs no torch. Enabled by EMBED_HEAD=<path to head.npz>.
+# ---------------------------------------------------------------------------
+_HEAD_LOCK = threading.Lock()
+_HEAD: tuple | bool | None = None  # weights tuple, or False if disabled/failed
+
+
+def _load_head():
+    global _HEAD
+    if _HEAD is not None:
+        return _HEAD or None
+    with _HEAD_LOCK:
+        if _HEAD is not None:
+            return _HEAD or None
+        path = os.environ.get("EMBED_HEAD", "").strip()
+        if not path or not os.path.exists(path):
+            _HEAD = False
+            return None
+        try:
+            d = np.load(path)
+            _HEAD = (d["W1"], d["b1"], d["W2"], d["b2"])
+            print(f"[embed:head] loaded projection head {path}", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001 - never break the embed path
+            print(f"[embed:head] load failed; ignoring head: {e}", file=sys.stderr)
+            _HEAD = False
+            return None
+    return _HEAD
+
+
+def _apply_head(vec_list, head) -> list[float]:
+    """Forward a 2-layer ReLU MLP in numpy, then L2-normalize and fit to 512."""
+    W1, b1, W2, b2 = head
+    x = np.asarray(vec_list, dtype=np.float32)
+    h = np.maximum(0.0, x @ W1 + b1)
+    y = (h @ W2 + b2).astype(np.float32)
+    return _fit_512(y)
 
 
 def _embed_classical(pil_image) -> list[float]:
