@@ -1,8 +1,14 @@
 # Config-driven pipeline (mirrors the MLOps course's config.yml pattern).
+# Any key below can be overridden at run time by the matching UPPER_SNAKE env
+# var (e.g. SAMPLE_SIZE, EVAL_CARDS) — handy for baseline sweeps.
 game: pokemon
 # "all" => index every card in the local dataset manifest (the full downloaded
-# catalogue). Set to an integer to cap the run (e.g. for a quick smoke build).
+# catalogue). Set to an integer to cap the run (e.g. a quick subset baseline).
 # Falls back to a 30-card live-API sample when no manifest is present.
 sample_size: all
-holdout: 200      # cards sampled across the dataset to evaluate recall@1
 embed_dim: 512    # classical visual descriptor dimensionality (pgvector vector(512))
+
+# --- Realistic synthetic-photo eval harness ---
+eval_cards: 500   # distinct indexed cards evaluated (stride-sampled across sets)
+eval_views: 3     # synthetic phone-photos generated per card
+eval_seed: 1234   # makes the eval reproducible / runs comparable
