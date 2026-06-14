@@ -40,3 +40,6 @@ services/sentinel/data/
 
 # transformers.js / onnx model cache from parity scripts
 .onnx-models-cache/
+
+# retrain logs
+logs/
