@@ -9,6 +9,10 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# CPU-only PyTorch — used solely to train the small projection head
+# (sub-project 3). The CPU wheel keeps the image lean (no CUDA). The head is
+# APPLIED in pure numpy at inference, so torch is a trainer-only dependency.
+RUN pip install --no-cache-dir torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
 COPY config.yaml .
 COPY src ./src
 # GIT_PYTHON_REFRESH is set in docker-compose so MLflow's GitPython probe
