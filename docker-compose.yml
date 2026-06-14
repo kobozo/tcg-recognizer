@@ -92,7 +92,7 @@ services:
   # An extra recognition channel: OCR cards -> text -> vector -> Qdrant search.
   # Gated behind `extras` so the default `docker compose up` and CI are unchanged.
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.18.2
     profiles: ["extras"]
     volumes:
       - qdrant_storage:/qdrant/storage
