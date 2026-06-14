@@ -16,6 +16,9 @@ export type CardPredictions = {
 export type Enrichment = {
   hp?: string;
   attacks?: string[];
-  priceIndicator?: string;
+  /** Market value snapshot at scan time. */
+  price?: number;
+  currency?: string; // e.g. "USD" | "EUR"
+  priceIndicator?: string; // legacy / fallback display
   imageUrl?: string;
 };

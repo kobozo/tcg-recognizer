@@ -1,5 +1,6 @@
 // Magic: The Gathering provider — Scryfall (https://scryfall.com/docs/api). Free, no key.
 import type { GameCard, GameProvider, GameSet } from "./types";
+import type { Enrichment } from "@/lib/types";
 
 const API = "https://api.scryfall.com";
 const UA = { "User-Agent": "tcg-recognizer/1.0", Accept: "application/json" };
@@ -100,6 +101,43 @@ export const magicProvider: GameProvider = {
       return cards;
     } catch {
       return cards;
+    }
+  },
+
+  async enrich(name): Promise<Enrichment | null> {
+    try {
+      const res = await fetch(
+        `${API}/cards/named?fuzzy=${encodeURIComponent(name)}`,
+        { headers: UA, next: { revalidate: 21600 }, signal: AbortSignal.timeout(8000) },
+      );
+      if (!res.ok) return null;
+      const c = (await res.json()) as {
+        prices?: { usd?: string | null; usd_foil?: string | null; eur?: string | null };
+        image_uris?: { normal?: string; small?: string };
+        card_faces?: { image_uris?: { normal?: string; small?: string } }[];
+      };
+      const p = c.prices ?? {};
+      let price: number | undefined;
+      let currency: string | undefined;
+      const usd = Number(p.usd ?? p.usd_foil);
+      const eur = Number(p.eur);
+      if (Number.isFinite(usd) && usd > 0) {
+        price = usd;
+        currency = "USD";
+      } else if (Number.isFinite(eur) && eur > 0) {
+        price = eur;
+        currency = "EUR";
+      }
+      return {
+        price,
+        currency,
+        imageUrl:
+          c.image_uris?.normal ??
+          c.image_uris?.small ??
+          c.card_faces?.[0]?.image_uris?.normal,
+      };
+    } catch {
+      return null;
     }
   },
 };

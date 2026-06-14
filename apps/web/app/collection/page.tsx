@@ -1,7 +1,7 @@
 import Link from "next/link";
 import path from "node:path";
 import { redirect } from "next/navigation";
-import { Camera, Layers, Library, Sparkles, Boxes } from "lucide-react";
+import { Camera, Layers, Library, Wallet, Boxes } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getGameMeta, getProvider, listGames, normalizeSetName } from "@/lib/games";
@@ -9,7 +9,8 @@ import Container from "@/components/ui/Container";
 import { Card } from "@/components/ui/Card";
 import { buttonVariants } from "@/components/ui/Button";
 import CollectionView, { type CollectionCard } from "@/components/CollectionView";
-import type { CardPredictions } from "@/lib/types";
+import { formatMoney, formatTotals } from "@/lib/format";
+import type { CardPredictions, Enrichment } from "@/lib/types";
 
 export const metadata = { title: "My collection · TCG Recognizer" };
 
@@ -47,17 +48,23 @@ export default async function CollectionPage() {
   const gameName = (id: string) => getGameMeta(id)?.name ?? id;
 
   const cards: CollectionCard[] = rows.map((s) => {
-    const p = s.predictions as unknown as CardPredictions;
+    const stored = s.predictions as unknown as CardPredictions & {
+      enrichment?: Enrichment | null;
+    };
     return {
       id: s.id,
-      name: p?.name?.value ?? "Unknown card",
+      name: stored?.name?.value ?? "Unknown card",
       game: gameName(s.game),
-      set: p?.set?.value ?? "Unknown set",
-      rarity: p?.rarity?.value ?? "—",
+      set: stored?.set?.value ?? "Unknown set",
+      rarity: stored?.rarity?.value ?? "—",
       date: s.createdAt.toISOString(),
       image: `/api/uploads/${path.basename(s.imagePath)}`,
+      price: stored?.enrichment?.price,
+      currency: stored?.enrichment?.currency,
     };
   });
+
+  const totalValue = formatTotals(cards);
 
   // Which games does the user have cards in? Fetch official totals for each.
   const gamesPresent = [...new Set(rows.map((r) => r.game))];
@@ -71,14 +78,24 @@ export default async function CollectionPage() {
     }),
   );
 
-  // Per (game, set) completion.
-  const ownedByGameSet = new Map<string, { game: string; set: string; owned: number }>();
+  // Per (game, set) completion + value.
+  const ownedByGameSet = new Map<
+    string,
+    { game: string; set: string; owned: number; value: number; currency?: string }
+  >();
   for (const r of rows) {
-    const p = r.predictions as unknown as CardPredictions;
-    const setName = p?.set?.value || "Unknown set";
+    const stored = r.predictions as unknown as CardPredictions & {
+      enrichment?: Enrichment | null;
+    };
+    const setName = stored?.set?.value || "Unknown set";
     const key = `${r.game}:${setName}`;
-    const cur = ownedByGameSet.get(key) ?? { game: r.game, set: setName, owned: 0 };
+    const cur = ownedByGameSet.get(key) ?? { game: r.game, set: setName, owned: 0, value: 0 };
     cur.owned += 1;
+    const price = stored?.enrichment?.price;
+    if (typeof price === "number" && price > 0) {
+      cur.value += price;
+      cur.currency = cur.currency ?? stored?.enrichment?.currency;
+    }
     ownedByGameSet.set(key, cur);
   }
   const setProgress = [...ownedByGameSet.values()]
@@ -87,9 +104,8 @@ export default async function CollectionPage() {
       gameLabel: gameName(e.game),
       total: totalsByGameSet.get(`${e.game}:${normalizeSetName(e.set)}`) ?? 0,
     }))
-    .sort((a, b) => b.owned - a.owned);
+    .sort((a, b) => b.value - a.value || b.owned - a.owned);
 
-  const uniqueNames = new Set(cards.map((c) => `${c.game}:${c.name}`)).size;
   const distinctSets = ownedByGameSet.size;
   const distinctGames = gamesPresent.length;
 
@@ -135,8 +151,8 @@ export default async function CollectionPage() {
         </div>
 
         <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard icon={Layers} label="Cards" value={cards.length} />
-          <StatCard icon={Sparkles} label="Unique" value={uniqueNames} />
+          <StatCard icon={Wallet} label="Est. value" value={totalValue} />
+          <StatCard icon={Layers} label="Cards owned" value={cards.length} />
           <StatCard icon={Boxes} label="Sets" value={distinctSets} />
           <StatCard icon={Library} label="Games" value={distinctGames} />
         </div>
@@ -153,9 +169,16 @@ export default async function CollectionPage() {
                       <span className="text-muted">{sp.gameLabel} · </span>
                       {sp.set}
                     </span>
-                    <span className="shrink-0 text-sm text-muted">
-                      {sp.owned}
-                      {sp.total > 0 ? ` / ${sp.total}` : ""}
+                    <span className="flex shrink-0 items-center gap-2 text-sm">
+                      {sp.value > 0 && (
+                        <span className="font-semibold text-emerald-300">
+                          {formatMoney(sp.value, sp.currency)}
+                        </span>
+                      )}
+                      <span className="text-muted">
+                        {sp.owned}
+                        {sp.total > 0 ? ` / ${sp.total}` : ""}
+                      </span>
                     </span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-white/10">

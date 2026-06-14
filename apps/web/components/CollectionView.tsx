@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Search, Filter } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
+import { formatMoney } from "@/lib/format";
 
 export type CollectionCard = {
   id: string;
@@ -14,6 +15,8 @@ export type CollectionCard = {
   rarity: string;
   date: string;
   image: string;
+  price?: number;
+  currency?: string;
 };
 
 export default function CollectionView({ cards }: { cards: CollectionCard[] }) {
@@ -132,7 +135,14 @@ export default function CollectionView({ cards }: { cards: CollectionCard[] }) {
                     />
                   </div>
                   <div className="p-3">
-                    <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
+                      {typeof c.price === "number" && (
+                        <span className="shrink-0 text-sm font-semibold text-emerald-300">
+                          {formatMoney(c.price, c.currency)}
+                        </span>
+                      )}
+                    </div>
                     <p className="truncate text-xs text-muted">{c.set}</p>
                     <div className="mt-2 flex flex-wrap gap-1">
                       <Badge tone="neutral">{c.game}</Badge>

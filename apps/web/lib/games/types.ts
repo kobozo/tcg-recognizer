@@ -31,6 +31,8 @@ export interface GameProvider {
   listSets(): Promise<GameSet[]>;
   getSet(id: string): Promise<GameSet | null>;
   getSetCards(setId: string): Promise<GameCard[]>;
+  /** Look up a card by name for metadata + market value. null on miss/error. */
+  enrich(name: string): Promise<import("@/lib/types").Enrichment | null>;
 }
 
 /** Normalize a set name for loose matching against model predictions. */
