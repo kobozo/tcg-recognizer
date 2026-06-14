@@ -29,8 +29,13 @@ services:
   inference:
     build: ./services/inference
     env_file: .env
+    environment:
+      DATASET_DIR: /data
     volumes:
       - models:/models
+      # Read-only card images, so geometric re-ranking (RERANK_TOP_K>0) can load
+      # candidate reference images. Harmless when re-ranking is off.
+      - ./ml/datasets:/data:ro
     depends_on:
       db:
         condition: service_healthy
