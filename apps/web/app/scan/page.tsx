@@ -3,6 +3,7 @@ import { Camera, Cpu, Database } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Badge from "@/components/ui/Badge";
 import CameraScanner from "@/components/CameraScanner";
+import { listGames } from "@/lib/games";
 
 export const metadata: Metadata = { title: "Scan a card · TCG Recognizer" };
 
@@ -13,6 +14,9 @@ const steps = [
 ];
 
 export default function ScanPage() {
+  const games = listGames()
+    .filter((g) => g.available)
+    .map((g) => ({ id: g.id, name: g.name }));
   return (
     <Container className="py-10 sm:py-14">
       <div className="mx-auto max-w-3xl animate-fade-up">
@@ -30,7 +34,7 @@ export default function ScanPage() {
         </div>
 
         <div className="surface-panel p-5 sm:p-7">
-          <CameraScanner />
+          <CameraScanner games={games} />
         </div>
 
         <div className="mt-8 grid gap-3 sm:grid-cols-3">

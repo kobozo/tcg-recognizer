@@ -1,34 +1,14 @@
 import Link from "next/link";
-import { Library, AlertTriangle } from "lucide-react";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { listSets, normalizeSetName } from "@/lib/pokemon";
+import { Library, ArrowRight } from "lucide-react";
+import { listGames } from "@/lib/games";
 import Container from "@/components/ui/Container";
 import { Card } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
-import type { CardPredictions } from "@/lib/types";
 
-export const metadata = { title: "Pokémon sets · TCG Recognizer" };
-export const revalidate = 86400;
+export const metadata = { title: "Browse collections · TCG Recognizer" };
 
-export default async function SetsPage() {
-  const sets = await listSets();
-
-  // If signed in, compute how many cards the user owns per set (loose match
-  // on the predicted set name against the official set name).
-  const owned = new Map<string, number>();
-  const session = await auth();
-  if (session?.user) {
-    const rows = await db.scan.findMany({ where: { userId: session.user.id } });
-    for (const row of rows) {
-      const value = (row.predictions as unknown as CardPredictions)?.set?.value;
-      if (value) {
-        const key = normalizeSetName(value);
-        owned.set(key, (owned.get(key) ?? 0) + 1);
-      }
-    }
-  }
-
+export default function GamesHubPage() {
+  const games = listGames();
   return (
     <Container className="py-10 sm:py-14">
       <div className="animate-fade-up">
@@ -37,61 +17,33 @@ export default async function SetsPage() {
             <Library className="h-5 w-5" aria-hidden />
           </span>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Pokémon sets</h1>
-            <p className="text-sm text-muted">
-              Every official set, straight from the Pokémon TCG API
-              {sets.length > 0 ? ` · ${sets.length} sets` : ""}
-            </p>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Collections</h1>
+            <p className="text-sm text-muted">Choose a trading card game to browse its sets</p>
           </div>
         </div>
 
-        {sets.length === 0 ? (
-          <Card className="flex items-center gap-3 p-6 text-sm text-muted">
-            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" aria-hidden />
-            Couldn&apos;t reach the Pokémon TCG API right now. Try again shortly.
-          </Card>
-        ) : (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {sets.map((set) => {
-              const ownedCount = owned.get(normalizeSetName(set.name)) ?? 0;
-              return (
-                <li key={set.id}>
-                  <Link href={`/sets/${set.id}`} className="block h-full">
-                  <Card className="flex h-full flex-col gap-3 p-5 transition-colors hover:border-white/20 hover:bg-elevated">
-                    <div className="flex h-16 items-center">
-                      {set.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={set.logo}
-                          alt={`${set.name} logo`}
-                          className="max-h-14 max-w-[60%] object-contain"
-                        />
-                      ) : (
-                        <span className="text-lg font-semibold">{set.name}</span>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">{set.name}</p>
-                      <p className="text-sm text-muted">
-                        {set.series}
-                        {set.releaseDate ? ` · ${set.releaseDate.slice(0, 4)}` : ""}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Badge tone="neutral">{set.total} cards</Badge>
-                      {session?.user && (
-                        <Badge tone={ownedCount > 0 ? "success" : "neutral"}>
-                          {ownedCount > 0 ? `${ownedCount} owned` : "0 owned"}
-                        </Badge>
-                      )}
-                    </div>
-                  </Card>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {games.map((g) => (
+            <li key={g.id}>
+              <Link href={`/sets/${g.id}`} className="block h-full">
+                <Card className="flex h-full items-center justify-between gap-4 p-6 transition-colors hover:border-white/20 hover:bg-elevated">
+                  <div>
+                    <span className={`mb-2 inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${g.accent}`}>
+                      {g.name}
+                    </span>
+                    <p className="font-medium text-foreground">{g.full}</p>
+                    {!g.available && (
+                      <Badge tone="neutral" className="mt-2">
+                        Coming soon
+                      </Badge>
+                    )}
+                  </div>
+                  <ArrowRight className="h-5 w-5 shrink-0 text-muted" aria-hidden />
+                </Card>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
     </Container>
   );
