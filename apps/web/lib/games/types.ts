@@ -39,3 +39,12 @@ export interface GameProvider {
 export function normalizeSetName(value: string): string {
   return value.toLowerCase().replace(/\bset\b/g, "").replace(/[^a-z0-9]/g, "").trim();
 }
+
+/**
+ * Preferred pricing currency for this deployment. We're based in Belgium, so the
+ * default is EUR (Cardmarket for Pokémon, Scryfall `eur` for Magic), falling
+ * back to USD only when no local price exists. Override with PREFERRED_CURRENCY.
+ */
+export function preferredCurrency(): string {
+  return (process.env.PREFERRED_CURRENCY ?? "EUR").toUpperCase();
+}
