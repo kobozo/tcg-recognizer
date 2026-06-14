@@ -52,11 +52,15 @@ def build_index(items: list[dict], cfg) -> int:
                     continue
                 vec = embed(img)
                 # Release the decoded image promptly so a 20k-card run stays
-                # within a bounded memory footprint.
-                try:
-                    img.close()
-                except Exception:
-                    pass
+                # within a bounded memory footprint — but ONLY when we loaded it
+                # from disk. For API/synthetic items load_image() returns the
+                # shared item["image"] that evaluate() reuses; closing that would
+                # break evaluation for those cards.
+                if it.get("image") is None:
+                    try:
+                        img.close()
+                    except Exception:
+                        pass
                 if len(vec) != EMBED_DIM:
                     raise ValueError(
                         f"embedding dim {len(vec)} != {EMBED_DIM} for {it['card_id']}"

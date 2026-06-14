@@ -121,7 +121,11 @@ def ingest(cfg) -> list[dict]:
 
     _, manifest_path = _dataset_paths(game)
     if os.path.exists(manifest_path):
-        items = _ingest_from_manifest(game, manifest_path, cap)
+        try:
+            items = _ingest_from_manifest(game, manifest_path, cap)
+        except Exception as e:  # noqa: BLE001 - fall back to API/synthetic
+            print(f"[ingestion] manifest read failed ({e}); trying API")
+            items = []
         if items:
             print(
                 f"[ingestion] {len(items)} cards from manifest "

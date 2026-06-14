@@ -93,11 +93,13 @@ def fetch_all_metadata(
     cards: list[dict] = []
     page = 1
     total = None
+    complete = True
     while True:
         try:
             body = _get_page(s, page, page_size)
         except Exception as e:  # noqa: BLE001 - give up on this page, keep the rest
             print(f"[download] page {page} permanently failed ({e}); stopping pagination")
+            complete = False
             break
         if total is None:
             total = body.get("totalCount")
@@ -128,13 +130,18 @@ def fetch_all_metadata(
             break
         page += 1
 
-    if cache_path:
+    # Only persist the metadata cache when the full catalogue was paged. A
+    # truncated cache (after a permanent page failure) must NOT become the
+    # canonical dataset that future runs load blindly.
+    if cache_path and complete:
         tmp = cache_path + ".part"
         with open(tmp, "w") as f:
             for c in cards:
                 f.write(json.dumps(c) + "\n")
         os.replace(tmp, cache_path)
         print(f"[download] cached {len(cards)} card metadata rows -> {cache_path}")
+    elif cache_path and not complete:
+        print("[download] pagination incomplete; NOT caching partial metadata")
     return cards
 
 

@@ -18,14 +18,25 @@ import os
 from pipelines.download import download_all
 
 
+def _int_env(name: str, default: int | None) -> int | None:
+    """Parse an int env var, falling back to default on empty/invalid input."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"[download] ignoring invalid {name}={raw!r}; using {default}")
+        return default
+
+
 def main() -> None:
     game = os.environ.get("GAME", "pokemon")
     dataset_dir = os.environ.get("DATASET_DIR", "/data")
     image_size = os.environ.get("IMAGE_SIZE", "small")
     api_key = os.environ.get("POKEMON_TCG_API_KEY", "").strip() or None
-    workers = int(os.environ.get("DOWNLOAD_WORKERS", "16"))
-    limit_raw = os.environ.get("DOWNLOAD_LIMIT", "").strip()
-    limit = int(limit_raw) if limit_raw else None
+    workers = _int_env("DOWNLOAD_WORKERS", 16) or 16
+    limit = _int_env("DOWNLOAD_LIMIT", None)
 
     download_all(
         game=game,
