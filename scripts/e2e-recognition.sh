@@ -49,5 +49,20 @@ $DC exec -T db psql -U "${POSTGRES_USER:-tcg}" -d "${POSTGRES_DB:-tcg}" -tAc \
   "SELECT version FROM \"ModelVersion\" WHERE version LIKE 'embed-v1%' AND \"isCurrent\"=true;" | grep -q embed-v1 \
   || { echo "FAIL: no current embed-v1 ModelVersion"; exit 1; }
 
+echo "==> on-device path: a precomputed embedding resolves to the exact card"
+CARD=$($DC exec -T db psql -U "${POSTGRES_USER:-tcg}" -d "${POSTGRES_DB:-tcg}" -tAc \
+  "SELECT name FROM card_vectors WHERE game='pokemon' ORDER BY card_id LIMIT 1" | sed 's/^ *//;s/ *$//')
+EMB=$($DC exec -T db psql -U "${POSTGRES_USER:-tcg}" -d "${POSTGRES_DB:-tcg}" -tAc \
+  "SELECT embedding FROM card_vectors WHERE game='pokemon' ORDER BY card_id LIMIT 1" | tr -d ' ')
+SID2=$(curl -s -b "$JAR" -X POST "$BASE/api/scan" \
+  -F "image=@scripts/fixtures/card.jpg;type=image/jpeg" -F "game=pokemon" -F "embedding=$EMB" \
+  | sed -E 's/.*"id":"([^"]+)".*/\1/')
+[ -n "$SID2" ] || { echo "FAIL: on-device scan returned no id"; exit 1; }
+GOT=$($DC exec -T db psql -U "${POSTGRES_USER:-tcg}" -d "${POSTGRES_DB:-tcg}" -tAc \
+  "SELECT predictions->'name'->>'value' FROM \"Scan\" WHERE id='${SID2}'" | sed 's/^ *//;s/ *$//')
+echo "    expected '${CARD}' got '${GOT}'"
+[ -n "$CARD" ] && [ "$GOT" = "$CARD" ] || { echo "FAIL: on-device precomputed embedding did not match the source card"; exit 1; }
+echo "    on-device precomputed-embedding recognition confirmed"
+
 rm -f "$JAR"
 echo "RECOGNITION E2E OK"
