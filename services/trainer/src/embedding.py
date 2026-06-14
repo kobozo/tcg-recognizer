@@ -10,6 +10,12 @@ would drop straight into the rest of the pipeline unchanged.
 This file is duplicated byte-for-byte in services/inference and services/trainer
 because the two services are separate Docker build contexts and must agree on
 the embedding so that pgvector nearest-neighbor search is meaningful.
+
+PORTABILITY NOTE: `embed()` is implemented so it can be reproduced bit-for-bit
+in a browser (see apps/web/lib/clientEmbedding.ts). To that end, every resize
+inside `embed()` uses an explicit NEAREST-NEIGHBOR resample (plain numpy, no
+PIL bilinear) with index math `src = floor(dst * src_size / dst_size)`, which is
+trivially portable to JS. `deskew()` is NOT portable (OpenCV) and is unchanged.
 """
 from __future__ import annotations
 
@@ -38,6 +44,19 @@ def _to_bgr(image) -> np.ndarray:
 def _to_pil(bgr: np.ndarray) -> Image.Image:
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     return Image.fromarray(rgb)
+
+
+def _resize_nearest(arr: np.ndarray, dst_h: int, dst_w: int) -> np.ndarray:
+    """Nearest-neighbor resample, JS-portable. Works for 2-D or 3-D arrays.
+
+    For output pixel (oy, ox): src_y = floor(oy * src_h / dst_h),
+    src_x = floor(ox * src_w / dst_w). This deliberately mirrors the exact
+    index math used by the TypeScript port so the two stay bit-compatible.
+    """
+    src_h, src_w = arr.shape[0], arr.shape[1]
+    ys = (np.arange(dst_h) * src_h // dst_h).astype(np.intp)
+    xs = (np.arange(dst_w) * src_w // dst_w).astype(np.intp)
+    return arr[ys[:, None], xs[None, :]]
 
 
 def _order_quad(pts: np.ndarray) -> np.ndarray:
@@ -131,8 +150,8 @@ def embed(pil_image) -> list[float]:
     if not isinstance(pil_image, Image.Image):
         pil_image = _to_pil(_to_bgr(pil_image))
 
-    img = pil_image.convert("RGB").resize((224, 224))
-    rgb = np.asarray(img, dtype=np.float32)  # (224,224,3)
+    src_rgb = np.asarray(pil_image.convert("RGB"), dtype=np.float32)  # (H,W,3)
+    rgb = _resize_nearest(src_rgb, 224, 224)  # (224,224,3) nearest-neighbor
     gray = (0.299 * rgb[:, :, 0] + 0.587 * rgb[:, :, 1] + 0.114 * rgb[:, :, 2])
 
     feats: list[np.ndarray] = []
@@ -148,9 +167,7 @@ def embed(pil_image) -> list[float]:
             feats.append(np.array([gray[ys, xs].std() / 128.0], dtype=np.float32))  # 1
 
     # (b) Mean-subtracted downsampled grayscale block (spatial structure).
-    small = np.asarray(
-        Image.fromarray(gray.astype(np.uint8)).resize((18, 18)), dtype=np.float32
-    )
+    small = _resize_nearest(gray.astype(np.uint8), 18, 18).astype(np.float32)
     small = small - float(small.mean())  # focus on structure, not absolute brightness
     feats.append((small / 128.0).ravel())
 

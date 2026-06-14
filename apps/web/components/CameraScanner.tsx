@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { embedRgba } from "@/lib/clientEmbedding";
 import {
   Camera,
   CameraOff,
@@ -22,6 +23,27 @@ export default function CameraScanner({
 }) {
   const router = useRouter();
   const [game, setGame] = useState(games[0]?.id ?? "pokemon");
+  const [onDevice, setOnDevice] = useState(false);
+
+  // Compute the recognition embedding in the browser from the captured image,
+  // so the model runs on-device and only a 512-float vector reaches the server.
+  async function embedOnDevice(url: string): Promise<number[] | undefined> {
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.naturalWidth || 360;
+      c.height = img.naturalHeight || 504;
+      const ctx = c.getContext("2d");
+      if (!ctx) return undefined;
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const { data, width, height } = ctx.getImageData(0, 0, c.width, c.height);
+      return embedRgba(data, width, height);
+    } catch {
+      return undefined;
+    }
+  }
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -124,6 +146,10 @@ export default function CameraScanner({
       const form = new FormData();
       form.append("image", captured.blob, "card.jpg");
       form.append("game", game);
+      if (onDevice) {
+        const embedding = await embedOnDevice(captured.url);
+        if (embedding) form.append("embedding", JSON.stringify(embedding));
+      }
       const res = await fetch("/api/scan", { method: "POST", body: form });
       if (res.status === 401) {
         setError("Your session expired. Please log in again.");
@@ -169,6 +195,17 @@ export default function CameraScanner({
           ))}
         </div>
       )}
+
+      {/* On-device toggle */}
+      <label className="mx-auto inline-flex cursor-pointer items-center gap-2 text-xs text-muted">
+        <input
+          type="checkbox"
+          checked={onDevice}
+          onChange={(e) => setOnDevice(e.target.checked)}
+          className="h-4 w-4 accent-emerald-500"
+        />
+        Recognize on device (private) — the model runs in your browser; only a vector is sent
+      </label>
 
       {/* Stage */}
       <div className="relative mx-auto aspect-[3/4] w-full max-w-md overflow-hidden rounded-2xl border border-border bg-black/40">

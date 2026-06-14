@@ -59,3 +59,36 @@ def test_embed_is_512_normalized():
     vec = embed(Image.new("RGB", (224, 224), (10, 120, 240)))
     assert len(vec) == 512
     assert abs(math.sqrt(sum(x * x for x in vec)) - 1.0) < 1e-5
+
+
+def test_predict_accepts_precomputed_embedding():
+    """A valid precomputed embedding is accepted (no image needed); without a
+    DB it falls back to the stub but must not 500."""
+    import json
+
+    vec = [0.0] * 512
+    vec[0] = 1.0
+    r = client.post(
+        "/predict",
+        data={"game": "pokemon", "embedding": json.dumps(vec)},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["game"] == "pokemon"
+    assert "name" in body and "value" in body["name"]
+
+
+def test_predict_invalid_embedding_falls_back_to_image():
+    """An invalid embedding (wrong length) is ignored; the image path runs."""
+    import json
+
+    files = {"image": ("card.png", _png_bytes(), "image/png")}
+    r = client.post(
+        "/predict",
+        files=files,
+        data={"game": "magic", "embedding": json.dumps([0.1, 0.2, 0.3])},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["game"] == "magic"
+    assert "name" in body

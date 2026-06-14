@@ -36,6 +36,21 @@ export async function POST(req: Request) {
   // Only accept games enabled for this deployment; otherwise fall back to Pokémon.
   const game = isGameEnabled(gameRaw) ? gameRaw : "pokemon";
 
+  // Optional on-device embedding (computed in the browser). Passed through to
+  // inference, which then skips server-side embedding and just does the lookup.
+  let embedding: number[] | undefined;
+  const embRaw = form.get("embedding");
+  if (typeof embRaw === "string" && embRaw.length > 0) {
+    try {
+      const parsed: unknown = JSON.parse(embRaw);
+      if (Array.isArray(parsed) && parsed.every((n) => typeof n === "number")) {
+        embedding = parsed as number[];
+      }
+    } catch {
+      // ignore malformed client embedding; fall back to server-side embedding
+    }
+  }
+
   // Persist the uploaded bytes to the uploads volume.
   await mkdir(UPLOADS_DIR, { recursive: true });
   const fileName = `${randomUUID()}.jpg`;
@@ -44,7 +59,7 @@ export async function POST(req: Request) {
   await writeFile(imagePath, bytes);
 
   // Predict (stubbed inference) then best-effort enrichment.
-  const predictions = (await predictCard(image, game)) as CardPredictions;
+  const predictions = (await predictCard(image, game, embedding)) as CardPredictions;
   const enrichment = await enrichCard(predictions.name.value, game);
 
   const scan = await db.scan.create({

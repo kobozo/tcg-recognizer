@@ -8,12 +8,13 @@ error, zero rows) falls back to a per-game stub. /predict never returns 500 on
 a DB issue.
 """
 import io
+import json
 import os
 
 from fastapi import FastAPI, UploadFile, File, Form
 from PIL import Image
 
-from app.embedding import deskew, embed
+from app.embedding import deskew, embed, EMBED_DIM
 
 app = FastAPI(title="TCG Inference")
 
@@ -102,22 +103,58 @@ def model():
     return {"version": MODEL_VERSION, "metrics": {}, "is_current": True}
 
 
-@app.post("/predict")
-async def predict(image: UploadFile = File(...), game: str = Form("pokemon")):
-    raw = await image.read()
+def _parse_embedding(embedding: str | None):
+    """Parse the optional precomputed-embedding form field.
 
-    # Decode -> deskew -> embed. Any decode failure falls back to the stub.
+    Expects a JSON array of exactly EMBED_DIM finite floats. Returns the list
+    of floats, or None if absent/invalid (in which case the caller falls back
+    to server-side deskew+embed).
+    """
+    if not embedding:
+        return None
     try:
-        pil = Image.open(io.BytesIO(raw)).convert("RGB")
+        parsed = json.loads(embedding)
     except Exception:
-        return _stub_response(game)
-
+        return None
+    if not isinstance(parsed, (list, tuple)) or len(parsed) != EMBED_DIM:
+        return None
     try:
-        pil = deskew(pil)
-        vec = embed(pil)
-    except Exception as e:  # noqa: BLE001 - never 500 on a vision error
-        print(f"[predict] embedding failed; using stub: {e}")
-        return _stub_response(game)
+        vec = [float(x) for x in parsed]
+    except Exception:
+        return None
+    # Reject NaN/inf so the pgvector literal stays valid.
+    if any(v != v or v in (float("inf"), float("-inf")) for v in vec):
+        return None
+    return vec
+
+
+@app.post("/predict")
+async def predict(
+    image: UploadFile | None = File(None),
+    game: str = Form("pokemon"),
+    embedding: str | None = Form(None),
+):
+    # Fast path: a valid client-precomputed embedding skips server vision work.
+    vec = _parse_embedding(embedding)
+
+    if vec is None:
+        # No usable precomputed embedding: we need an image to embed.
+        if image is None:
+            return _stub_response(game)
+        raw = await image.read()
+
+        # Decode -> deskew -> embed. Any decode failure falls back to the stub.
+        try:
+            pil = Image.open(io.BytesIO(raw)).convert("RGB")
+        except Exception:
+            return _stub_response(game)
+
+        try:
+            pil = deskew(pil)
+            vec = embed(pil)
+        except Exception as e:  # noqa: BLE001 - never 500 on a vision error
+            print(f"[predict] embedding failed; using stub: {e}")
+            return _stub_response(game)
 
     rows = _query_index(vec, game)
     if not rows:
