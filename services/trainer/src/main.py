@@ -21,13 +21,27 @@ from pipelines.evaluation import evaluate
 CONFIG = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
 MODELS_DIR = os.environ.get("MODEL_DIR", "/models")
 
-# Name reported for the classical descriptor; swap for "dinov2"/"siglip" later.
-EMBED_MODEL_NAME = "classical-color-grad-512"
+# Name reported for the active embedder, derived from EMBEDDER so MLflow runs
+# and ModelVersion rows are labelled by which backend produced them.
+def embed_model_name() -> str:
+    backend = os.environ.get("EMBEDDER", "classical").strip().lower()
+    return "dinov2-small-512" if backend == "onnx" else "classical-color-grad-512"
+
+
+EMBED_MODEL_NAME = embed_model_name()
 
 
 def load_cfg() -> dict:
     with open(CONFIG) as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    # Env overrides for quick baseline sweeps (SAMPLE_SIZE, EVAL_CARDS, ...).
+    for key in ("sample_size", "eval_cards", "eval_views", "eval_seed", "embed_dim"):
+        env = os.environ.get(key.upper())
+        if env is not None and env != "":
+            cfg[key] = env if key == "sample_size" and env == "all" else (
+                int(env) if env.lstrip("-").isdigit() else env
+            )
+    return cfg
 
 
 def register_model_version(version: str, metrics: dict, size: int, run_id) -> None:
@@ -117,7 +131,8 @@ def incorporate_feedback(game: str) -> int:
 
 def main() -> None:
     cfg = load_cfg()
-    version = f"embed-v1-{uuid.uuid4().hex[:8]}"
+    backend = os.environ.get("EMBEDDER", "classical").strip().lower()
+    version = f"{backend}-{uuid.uuid4().hex[:8]}"
 
     # --- MLflow setup (optional) ---
     mlflow = None
