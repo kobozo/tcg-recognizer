@@ -52,8 +52,41 @@ services:
       - db
     restart: unless-stopped
 
+  # MLflow tracking server + model registry (MLOps course stack).
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.22.0
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
+      --host 0.0.0.0 --port 5000
+    ports:
+      - "0.0.0.0:5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    restart: unless-stopped
+
+  # One-shot, config-driven training/rebuild job (run on demand):
+  #   docker compose run --rm trainer
+  trainer:
+    build: ./services/trainer
+    profiles: ["tools"]
+    env_file: .env
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      GIT_PYTHON_REFRESH: quiet
+    volumes:
+      - models:/models
+    depends_on:
+      db:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+
 volumes:
   caddy_data:
   pgdata:
   models:
   uploads:
+  mlflow_data:
