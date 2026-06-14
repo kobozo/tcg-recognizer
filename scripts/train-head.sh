@@ -21,7 +21,10 @@ docker compose build trainer
 
 echo "==> ensure db + mlflow up"
 docker compose up -d db mlflow >/dev/null
-docker compose run --rm --no-deps web sh -c "npx prisma db push --skip-generate --accept-data-loss" >/dev/null 2>&1 || true
+# Ensure the Prisma tables exist (for the ModelVersion write in the measure
+# step). Surface failures rather than hiding them.
+docker compose run --rm --no-deps web sh -c "npx prisma db push --skip-generate --accept-data-loss" \
+  || echo "WARN: prisma db push failed; the measure step's ModelVersion write may be skipped"
 
 echo "==> train head (precompute DINOv2 features + InfoNCE head)"
 docker compose run --rm --no-deps -e EMBEDDER=onnx \

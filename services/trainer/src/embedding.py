@@ -161,9 +161,19 @@ def embed(pil_image) -> list[float]:
     augmentation-invariant space.
     """
     if os.environ.get("EMBEDDER", "classical").strip().lower() == "onnx":
+        # Apply the head ONLY when onnx genuinely produced the embedding — if
+        # the onnx model is unavailable, _embed_onnx() falls back to the
+        # classical descriptor, which the DINOv2-trained head must not touch.
+        onnx_ok = _ensure_onnx() is not None
         vec = _embed_onnx(pil_image)
-        head = _load_head()
-        return _apply_head(vec, head) if head is not None else vec
+        if onnx_ok:
+            head = _load_head()
+            if head is not None:
+                try:
+                    return _apply_head(vec, head)
+                except Exception as e:  # noqa: BLE001 - never break embed()
+                    print(f"[embed:head] apply failed; using base embedding: {e}", file=sys.stderr)
+        return vec
     return _embed_classical(pil_image)
 
 
@@ -190,7 +200,21 @@ def _load_head():
             return None
         try:
             d = np.load(path)
-            _HEAD = (d["W1"], d["b1"], d["W2"], d["b2"])
+            W1, b1, W2, b2 = d["W1"], d["b1"], d["W2"], d["b2"]
+            # Validate shapes so a malformed head can never crash embed().
+            if (
+                W1.ndim != 2 or W2.ndim != 2 or b1.ndim != 1 or b2.ndim != 1
+                or W1.shape[1] != b1.shape[0]
+                or W2.shape[0] != b1.shape[0]
+                or W2.shape[1] != b2.shape[0]
+            ):
+                raise ValueError(
+                    f"bad head shapes: W1{W1.shape} b1{b1.shape} W2{W2.shape} b2{b2.shape}"
+                )
+            _HEAD = (
+                W1.astype(np.float32), b1.astype(np.float32),
+                W2.astype(np.float32), b2.astype(np.float32),
+            )
             print(f"[embed:head] loaded projection head {path}", file=sys.stderr)
         except Exception as e:  # noqa: BLE001 - never break the embed path
             print(f"[embed:head] load failed; ignoring head: {e}", file=sys.stderr)

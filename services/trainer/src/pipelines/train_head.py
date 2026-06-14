@@ -26,6 +26,8 @@ from pipelines.photo_aug import make_photo
 
 
 def _sample_cards(game: str, n: int) -> list[dict]:
+    if n <= 0:
+        raise ValueError(f"HEAD_TRAIN_CARDS must be > 0 (got {n})")
     _, manifest = _dataset_paths(game)
     items = _ingest_from_manifest(game, manifest, None)
     if not items:
@@ -42,6 +44,8 @@ def precompute(game: str, n_cards: int, n_views: int, seed: int, out_path: str) 
     Relies on embed() using the onnx backend WITHOUT a head (do not set
     EMBED_HEAD when running this), so we capture the raw frozen features.
     """
+    if n_views <= 0:
+        raise ValueError(f"HEAD_VIEWS must be > 0 (got {n_views})")
     cards = _sample_cards(game, n_cards)
     refs: list[np.ndarray] = []
     augs: list[np.ndarray] = []
@@ -59,6 +63,8 @@ def precompute(game: str, n_cards: int, n_views: int, seed: int, out_path: str) 
         augs.append(np.stack(views))
         if (i + 1) % 200 == 0:
             print(f"[head] precompute {i + 1}/{len(cards)}")
+    if not refs:
+        raise RuntimeError("no readable card images; nothing to precompute")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     np.savez(out_path, ref=np.stack(refs), aug=np.stack(augs))
     print(f"[head] saved features {out_path}: refs={len(refs)} views={n_views}")
