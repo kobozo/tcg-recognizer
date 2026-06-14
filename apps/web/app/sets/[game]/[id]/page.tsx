@@ -30,7 +30,7 @@ export default async function SetDetailPage({
   const { game, id } = await params;
   const meta = getGameMeta(game);
   const provider = getProvider(game);
-  if (!meta || !provider) notFound();
+  if (!meta || !provider || !meta.available) notFound();
 
   const [set, cards] = await Promise.all([provider.getSet(id), provider.getSetCards(id)]);
   if (!set) notFound();

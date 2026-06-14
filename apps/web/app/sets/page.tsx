@@ -23,26 +23,41 @@ export default function GamesHubPage() {
         </div>
 
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {games.map((g) => (
-            <li key={g.id}>
-              <Link href={`/sets/${g.id}`} className="block h-full">
-                <Card className="flex h-full items-center justify-between gap-4 p-6 transition-colors hover:border-white/20 hover:bg-elevated">
-                  <div>
-                    <span className={`mb-2 inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${g.accent}`}>
-                      {g.name}
-                    </span>
-                    <p className="font-medium text-foreground">{g.full}</p>
-                    {!g.available && (
-                      <Badge tone="neutral" className="mt-2">
-                        Coming soon
-                      </Badge>
-                    )}
-                  </div>
-                  <ArrowRight className="h-5 w-5 shrink-0 text-muted" aria-hidden />
-                </Card>
-              </Link>
-            </li>
-          ))}
+          {games.map((g) => {
+            const inner = (
+              <Card
+                className={`flex h-full items-center justify-between gap-4 p-6 ${
+                  g.available
+                    ? "transition-colors hover:border-white/20 hover:bg-elevated"
+                    : "opacity-60"
+                }`}
+              >
+                <div>
+                  <span className={`mb-2 inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${g.accent}`}>
+                    {g.name}
+                  </span>
+                  <p className="font-medium text-foreground">{g.full}</p>
+                  {!g.available && (
+                    <Badge tone="neutral" className="mt-2">
+                      Coming soon
+                    </Badge>
+                  )}
+                </div>
+                {g.available && <ArrowRight className="h-5 w-5 shrink-0 text-muted" aria-hidden />}
+              </Card>
+            );
+            return (
+              <li key={g.id}>
+                {g.available ? (
+                  <Link href={`/sets/${g.id}`} className="block h-full">
+                    {inner}
+                  </Link>
+                ) : (
+                  inner
+                )}
+              </li>
+            );
+          })}
         </ul>
       </div>
     </Container>

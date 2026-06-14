@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { predictCard } from "@/lib/inference";
 import { enrichCard } from "@/lib/enrich";
+import { isGameEnabled } from "@/lib/games";
 import type { CardPredictions } from "@/lib/types";
 
 const UPLOADS_DIR = "/app/uploads";
@@ -31,8 +32,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "File must be an image" }, { status: 400 });
   }
 
-  const gameRaw = form.get("game");
-  const game = gameRaw === "magic" ? "magic" : "pokemon";
+  const gameRaw = typeof form.get("game") === "string" ? String(form.get("game")) : "pokemon";
+  // Only accept games enabled for this deployment; otherwise fall back to Pokémon.
+  const game = isGameEnabled(gameRaw) ? gameRaw : "pokemon";
 
   // Persist the uploaded bytes to the uploads volume.
   await mkdir(UPLOADS_DIR, { recursive: true });

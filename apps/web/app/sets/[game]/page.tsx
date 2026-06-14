@@ -28,6 +28,26 @@ export default async function GameSetsPage({
   const provider = getProvider(game);
   if (!meta || !provider) notFound();
 
+  if (!meta.available) {
+    return (
+      <Container className="py-16">
+        <div className="mb-6">
+          <GameTabs basePath="/sets" current={game} />
+        </div>
+        <Card className="mx-auto max-w-md p-10 text-center">
+          <span className={`mx-auto mb-3 inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${meta.accent}`}>
+            {meta.name}
+          </span>
+          <h1 className="text-xl font-semibold tracking-tight">{meta.full} — coming soon</h1>
+          <p className="mx-auto mt-2 max-w-sm text-muted">
+            Support for {meta.name} is built in and ready; it&apos;s just switched off for now.
+            Enable it by setting <code className="text-foreground">ENABLED_GAMES</code>.
+          </p>
+        </Card>
+      </Container>
+    );
+  }
+
   const sets = await provider.listSets();
 
   // Per-set owned counts for the signed-in user, scoped to this game.
