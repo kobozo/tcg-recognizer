@@ -93,14 +93,24 @@ def _query_index(vec, game: str):
                 pass
 
 
+def _active_embedder() -> str:
+    """Which embedding backend embed() will dispatch to (see app.embedding)."""
+    return "onnx" if os.environ.get("EMBEDDER", "classical").strip().lower() == "onnx" else "classical"
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_version": MODEL_VERSION}
+    return {"status": "ok", "model_version": MODEL_VERSION, "embedder": _active_embedder()}
 
 
 @app.get("/model")
 def model():
-    return {"version": MODEL_VERSION, "metrics": {}, "is_current": True}
+    return {
+        "version": MODEL_VERSION,
+        "metrics": {},
+        "is_current": True,
+        "embedder": _active_embedder(),
+    }
 
 
 def _parse_embedding(embedding: str | None):

@@ -27,6 +27,11 @@ export default function CameraScanner({
 
   // Compute the recognition embedding in the browser from the captured image,
   // so the model runs on-device and only a 512-float vector reaches the server.
+  //
+  // On-device embedding (classical descriptor). The learned DINOv2 path runs
+  // server-side (EMBEDDER=onnx); a Node-verified browser port lives in
+  // lib/onnxEmbedding.ts (parity cosine 0.9999) and is a documented follow-up
+  // once the transformers.js + Next bundler integration is wired.
   async function embedOnDevice(url: string): Promise<number[] | undefined> {
     try {
       const img = new Image();

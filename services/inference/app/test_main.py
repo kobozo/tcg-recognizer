@@ -11,6 +11,9 @@ from PIL import Image
 
 # Ensure no DB is configured so we exercise the stub fallback path.
 os.environ.pop("DATABASE_URL", None)
+# Force the default (classical) embedder so CI never touches the network: the
+# onnx backend would otherwise try to download the DINOv2 model on first embed.
+os.environ.pop("EMBEDDER", None)
 
 from app.main import app  # noqa: E402
 
@@ -28,6 +31,8 @@ def test_health():
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
     assert "model_version" in r.json()
+    # Default backend must be classical so CI does no model download.
+    assert r.json().get("embedder") == "classical"
 
 
 def test_predict_stub_shape():

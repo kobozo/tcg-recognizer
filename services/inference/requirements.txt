@@ -7,3 +7,5 @@ numpy
 pillow
 opencv-python-headless
 psycopg2-binary
+onnxruntime
+requests==2.32.3

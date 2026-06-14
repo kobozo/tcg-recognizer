@@ -5,3 +5,4 @@ opencv-python-headless
 psycopg2-binary
 requests==2.32.3
 pyyaml==6.0.2
+onnxruntime
