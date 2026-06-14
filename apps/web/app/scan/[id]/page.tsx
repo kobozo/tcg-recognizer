@@ -5,6 +5,7 @@ import { ArrowLeft, Check, Boxes, Camera } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import CardProfile from "@/components/CardProfile";
+import FeedbackControl from "@/components/FeedbackControl";
 import Container from "@/components/ui/Container";
 import { buttonVariants } from "@/components/ui/Button";
 import type { CardPredictions, Enrichment } from "@/lib/types";
@@ -58,6 +59,11 @@ export default async function ScanResultPage({
           imageSrc={`/api/uploads/${fileName}`}
           predictions={predictions}
           enrichment={enrichment}
+        />
+        <FeedbackControl
+          scanId={scan.id}
+          predictedName={predictions.name?.value ?? ""}
+          candidates={(predictions.name?.candidates ?? []).map((c) => c.value)}
         />
       </div>
     </Container>

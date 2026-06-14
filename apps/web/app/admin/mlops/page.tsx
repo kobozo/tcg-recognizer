@@ -1,5 +1,5 @@
-import { Cpu, ExternalLink } from "lucide-react";
-import { listModelVersions } from "@/lib/admin";
+import { Cpu, ExternalLink, Activity, AlertTriangle } from "lucide-react";
+import { listModelVersions, recognitionHealth } from "@/lib/admin";
 import { Card } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
@@ -23,11 +23,44 @@ function runId(metrics: unknown): string | null {
   return null;
 }
 
+function pct(x: number | null): string {
+  return x === null ? "—" : `${Math.round(x * 100)}%`;
+}
+
 export default async function AdminMlopsPage() {
-  const versions = await listModelVersions();
+  const [versions, health] = await Promise.all([listModelVersions(), recognitionHealth()]);
 
   return (
     <section>
+      {/* Recognition health / drift signal */}
+      <div className="mb-6">
+        <div className="mb-3 flex items-center gap-2">
+          <Activity className="h-5 w-5 text-accent" aria-hidden />
+          <h2 className="text-lg font-semibold tracking-tight">Recognition health</h2>
+          {health.needsRetraining && (
+            <Badge tone="danger">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> consider retraining
+            </Badge>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: "Scans", value: String(health.totalScans) },
+            { label: "Avg confidence", value: pct(health.avgConfidence) },
+            { label: "Low-confidence", value: pct(health.lowConfidenceRate) },
+            { label: "Feedback / fixes", value: `${health.feedbackCount} / ${health.corrections}` },
+          ].map((s) => (
+            <Card key={s.label} className="p-4">
+              <p className="text-2xl font-semibold tracking-tight">{s.value}</p>
+              <p className="text-xs uppercase tracking-wide text-muted">{s.label}</p>
+            </Card>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Confirmed feedback is folded back into the index on the next rebuild
+          (active learning). Falling confidence is the cue to retrain.
+        </p>
+      </div>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold tracking-tight">Model versions</h2>
         <a

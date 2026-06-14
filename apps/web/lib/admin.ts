@@ -38,3 +38,43 @@ export function signupsByDay(): Promise<SignupDay[]> {
 export function listModelVersions() {
   return db.modelVersion.findMany({ orderBy: { trainedAt: "desc" } });
 }
+
+export type RecognitionHealth = {
+  totalScans: number;
+  avgConfidence: number | null; // 0..1
+  lowConfidenceRate: number | null; // 0..1
+  feedbackCount: number;
+  corrections: number;
+  needsRetraining: boolean;
+};
+
+/**
+ * Drift / quality signal for the recognizer: average prediction confidence and
+ * the share of low-confidence scans, plus the human-in-the-loop feedback volume.
+ * A falling average confidence (or many corrections) is the cue to retrain.
+ */
+export async function recognitionHealth(): Promise<RecognitionHealth> {
+  const [agg] = await db.$queryRaw<
+    { total: number; avg_conf: number | null; low: number }[]
+  >`
+    SELECT count(*)::int AS total,
+           avg((predictions->'name'->>'conf')::float) AS avg_conf,
+           count(*) FILTER (WHERE (predictions->'name'->>'conf')::float < 0.6)::int AS low
+    FROM "Scan"
+    WHERE predictions->'name'->>'conf' IS NOT NULL
+  `;
+  const total = agg?.total ?? 0;
+  const avg = agg?.avg_conf ?? null;
+  const [feedbackCount, corrections] = await Promise.all([
+    db.feedback.count(),
+    db.feedback.count({ where: { correct: false } }),
+  ]);
+  return {
+    totalScans: total,
+    avgConfidence: avg,
+    lowConfidenceRate: total > 0 ? (agg.low ?? 0) / total : null,
+    feedbackCount,
+    corrections,
+    needsRetraining: avg !== null && avg < 0.6,
+  };
+}
