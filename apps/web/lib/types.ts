@@ -11,6 +11,12 @@ export type CardPredictions = {
   rarity: Prediction;
   card_number: Prediction;
   model_version: string;
+  /**
+   * Opt-in OCR + Qdrant text channel: the OCR'd text and the source tag for the
+   * extra candidates folded into `name.candidates`. Present only when the
+   * `extras` OCR channel is enabled (OCR_QDRANT).
+   */
+  ocr?: { text: string; source: string };
 };
 
 export type Enrichment = {
