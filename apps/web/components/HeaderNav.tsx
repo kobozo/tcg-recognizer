@@ -25,6 +25,7 @@ export default function HeaderNav({
   const items: NavItem[] = [
     { href: "/", label: "Home" },
     ...(isAuthed ? [{ href: "/collection", label: "My collection" }] : []),
+    ...(isAuthed ? [{ href: "/assistant", label: "Assistant" }] : []),
     { href: "/scan", label: "Add card" },
     { href: "/sets", label: "Browse" },
     ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
