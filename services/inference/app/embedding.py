@@ -1,23 +1,42 @@
-"""Shared visual-embedding module (CPU-only, classical descriptor).
+"""Shared visual-embedding module (CPU-only). Two selectable backends.
 
-NOTE: This is a *classical* hand-crafted visual descriptor (color histograms +
-gradient-orientation histogram + a downsampled pixel block), NOT a learned
-embedding. It is deterministic and dependency-light (OpenCV / Pillow / numpy)
-so it runs comfortably on CPU. It is intentionally swappable: replacing `embed`
-with a DINOv2 / SigLIP forward pass (returning a 512-d L2-normalized vector)
-would drop straight into the rest of the pipeline unchanged.
+`embed(pil) -> list[512 floats]` dispatches on the env var ``EMBEDDER``:
+
+  * ``classical`` (DEFAULT) -- a hand-crafted visual descriptor (color
+    histograms + gradient-orientation histogram + a downsampled pixel block).
+    It is deterministic and dependency-light (OpenCV / Pillow / numpy) so it
+    runs comfortably on CPU. It is reproducible bit-for-bit in a browser.
+
+  * ``onnx`` -- a *learned* embedding from DINOv2-small (``Xenova/dinov2-small``)
+    run via onnxruntime on CPU. The CLS token of ``last_hidden_state`` is taken,
+    L2-normalized, then padded/truncated to EXACTLY 512 dims and L2-normalized
+    again so the existing pgvector ``vector(512)`` table is unchanged. The
+    browser uses the SAME model via transformers.js (apps/web/lib/onnxEmbedding.ts)
+    so on-device embeddings match the server's index. The ONNX weights and the
+    model's ``preprocessor_config.json`` are lazily downloaded once from the
+    Hugging Face hub into ``$MODEL_DIR/onnx/dinov2-small/`` and reused. If the
+    model cannot be fetched or loaded, ``_embed_onnx`` logs and FALLS BACK to the
+    classical descriptor (it never raises), so the service stays available.
+
+The ONNX path is OPT-IN: with ``EMBEDDER`` unset/``classical`` behavior is
+exactly as before (no model download, no network).
 
 This file is duplicated byte-for-byte in services/inference and services/trainer
 because the two services are separate Docker build contexts and must agree on
 the embedding so that pgvector nearest-neighbor search is meaningful.
 
-PORTABILITY NOTE: `embed()` is implemented so it can be reproduced bit-for-bit
-in a browser (see apps/web/lib/clientEmbedding.ts). To that end, every resize
-inside `embed()` uses an explicit NEAREST-NEIGHBOR resample (plain numpy, no
-PIL bilinear) with index math `src = floor(dst * src_size / dst_size)`, which is
-trivially portable to JS. `deskew()` is NOT portable (OpenCV) and is unchanged.
+PORTABILITY NOTE: the CLASSICAL `embed()` (``_embed_classical``) is implemented
+so it can be reproduced bit-for-bit in a browser (see
+apps/web/lib/clientEmbedding.ts). To that end, every resize inside it uses an
+explicit NEAREST-NEIGHBOR resample (plain numpy, no PIL bilinear) with index
+math `src = floor(dst * src_size / dst_size)`, which is trivially portable to JS.
+`deskew()` is NOT portable (OpenCV) and is unchanged.
 """
 from __future__ import annotations
+
+import os
+import sys
+import threading
 
 import numpy as np
 from PIL import Image
@@ -130,6 +149,19 @@ def deskew(image) -> Image.Image:
 
 
 def embed(pil_image) -> list[float]:
+    """Compute a 512-dim L2-normalized embedding, selecting the backend by env.
+
+    ``EMBEDDER=onnx`` uses the learned DINOv2-small ONNX embedding (with a
+    transparent fall-back to the classical descriptor if the model cannot be
+    loaded); anything else (the default ``classical``) uses the hand-crafted
+    descriptor. Always returns exactly 512 floats.
+    """
+    if os.environ.get("EMBEDDER", "classical").strip().lower() == "onnx":
+        return _embed_onnx(pil_image)
+    return _embed_classical(pil_image)
+
+
+def _embed_classical(pil_image) -> list[float]:
     """Deterministic 512-dim L2-normalized classical visual descriptor.
 
     The descriptor is deliberately *spatial* rather than purely global: TCG
@@ -207,3 +239,208 @@ def embed(pil_image) -> list[float]:
         vec = vec / norm
 
     return [float(x) for x in vec.tolist()]
+
+
+# ---------------------------------------------------------------------------
+# Learned backend: DINOv2-small via onnxruntime (EMBEDDER=onnx).
+# ---------------------------------------------------------------------------
+
+# Hugging Face repo + the two files we need (model graph + preprocessing config).
+_HF_REPO = "Xenova/dinov2-small"
+_HF_BASE = f"https://huggingface.co/{_HF_REPO}/resolve/main"
+_ONNX_REL = "onnx/model.onnx"
+_PREPROC_REL = "preprocessor_config.json"
+
+# Module-level lazy cache so the model + preprocessing are loaded exactly once.
+_ONNX_LOCK = threading.Lock()
+_ONNX_STATE: dict | None = None  # {"session", "input_name", "preproc"} once ready
+_ONNX_FAILED = False  # set True after a load failure so we don't retry every call
+
+
+def _model_cache_dir() -> str:
+    base = os.environ.get("MODEL_DIR", "/models")
+    return os.path.join(base, "onnx", "dinov2-small")
+
+
+def _download_once(url: str, dest: str) -> None:
+    """Download ``url`` to ``dest`` if not already present. Raises on failure."""
+    if os.path.exists(dest) and os.path.getsize(dest) > 0:
+        return
+    import requests  # local import; only needed on the onnx path
+
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    tmp = dest + ".part"
+    with requests.get(url, stream=True, timeout=120) as r:
+        r.raise_for_status()
+        with open(tmp, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1 << 20):
+                if chunk:
+                    f.write(chunk)
+    os.replace(tmp, dest)
+
+
+def _default_preproc() -> dict:
+    """DINOv2 image-processor defaults (used if the config can't be read)."""
+    return {
+        "size": {"shortest_edge": 256},
+        "crop_size": {"height": 224, "width": 224},
+        "image_mean": [0.485, 0.456, 0.406],
+        "image_std": [0.229, 0.224, 0.225],
+        "do_resize": True,
+        "do_center_crop": True,
+        "rescale_factor": 1 / 255.0,
+    }
+
+
+def _load_preproc(path: str) -> dict:
+    import json
+
+    cfg = _default_preproc()
+    try:
+        with open(path) as f:
+            raw = json.load(f)
+    except Exception:
+        return cfg
+    # Merge known keys, tolerating the various shapes HF processors use.
+    if isinstance(raw.get("size"), dict):
+        cfg["size"] = raw["size"]
+    elif isinstance(raw.get("size"), int):
+        cfg["size"] = {"shortest_edge": raw["size"]}
+    if isinstance(raw.get("crop_size"), dict):
+        cfg["crop_size"] = raw["crop_size"]
+    elif isinstance(raw.get("crop_size"), int):
+        cfg["crop_size"] = {"height": raw["crop_size"], "width": raw["crop_size"]}
+    for k in ("image_mean", "image_std", "do_resize", "do_center_crop"):
+        if k in raw:
+            cfg[k] = raw[k]
+    if "rescale_factor" in raw:
+        cfg["rescale_factor"] = raw["rescale_factor"]
+    return cfg
+
+
+def _ensure_onnx():
+    """Lazily download + load the DINOv2 ONNX model. Returns state or None."""
+    global _ONNX_STATE, _ONNX_FAILED
+    if _ONNX_STATE is not None:
+        return _ONNX_STATE
+    if _ONNX_FAILED:
+        return None
+    with _ONNX_LOCK:
+        if _ONNX_STATE is not None:
+            return _ONNX_STATE
+        if _ONNX_FAILED:
+            return None
+        try:
+            import onnxruntime as ort  # local import; manylinux wheel
+
+            cache = _model_cache_dir()
+            model_path = os.path.join(cache, "model.onnx")
+            preproc_path = os.path.join(cache, "preprocessor_config.json")
+            _download_once(f"{_HF_BASE}/{_ONNX_REL}", model_path)
+            try:
+                _download_once(f"{_HF_BASE}/{_PREPROC_REL}", preproc_path)
+            except Exception as e:  # noqa: BLE001 - preproc has sane defaults
+                print(f"[embed:onnx] preprocessor_config download failed; using defaults: {e}", file=sys.stderr)
+
+            so = ort.SessionOptions()
+            so.intra_op_num_threads = int(os.environ.get("ORT_THREADS", "0")) or 0
+            session = ort.InferenceSession(
+                model_path, sess_options=so, providers=["CPUExecutionProvider"]
+            )
+            preproc = _load_preproc(preproc_path)
+            _ONNX_STATE = {
+                "session": session,
+                "input_name": session.get_inputs()[0].name,
+                "preproc": preproc,
+            }
+            print(f"[embed:onnx] loaded DINOv2-small ONNX from {model_path}", file=sys.stderr)
+            return _ONNX_STATE
+        except Exception as e:  # noqa: BLE001 - never fail the request path
+            _ONNX_FAILED = True
+            print(f"[embed:onnx] load failed; falling back to classical: {e}", file=sys.stderr)
+            return None
+
+
+def _preprocess_onnx(pil_image, preproc: dict) -> np.ndarray:
+    """Preprocess a PIL image to NCHW float32, matching the DINOv2 processor.
+
+    Resize shortest side to ``size.shortest_edge`` (bicubic) -> center-crop
+    ``crop_size`` -> scale to [0,1] -> normalize with image_mean/image_std.
+    Mirrors transformers / transformers.js DINOv2 image processing.
+    """
+    if not isinstance(pil_image, Image.Image):
+        pil_image = _to_pil(_to_bgr(pil_image))
+    img = pil_image.convert("RGB")
+
+    size = preproc.get("size", {})
+    shortest = int(size.get("shortest_edge", size.get("height", 256)))
+    crop = preproc.get("crop_size", {})
+    crop_h = int(crop.get("height", 224))
+    crop_w = int(crop.get("width", 224))
+
+    # Resize shortest edge to `shortest`, preserving aspect ratio (bicubic).
+    w, h = img.size
+    if w <= h:
+        new_w = shortest
+        new_h = int(round(h * shortest / w))
+    else:
+        new_h = shortest
+        new_w = int(round(w * shortest / h))
+    img = img.resize((new_w, new_h), Image.BICUBIC)
+
+    # Center-crop to (crop_h, crop_w).
+    left = max(0, (new_w - crop_w) // 2)
+    top = max(0, (new_h - crop_h) // 2)
+    img = img.crop((left, top, left + crop_w, top + crop_h))
+    # Guard against off-by-one if the source was smaller than the crop.
+    if img.size != (crop_w, crop_h):
+        img = img.resize((crop_w, crop_h), Image.BICUBIC)
+
+    arr = np.asarray(img, dtype=np.float32)  # (H,W,3), 0..255
+    rescale = float(preproc.get("rescale_factor", 1 / 255.0))
+    arr = arr * rescale
+    mean = np.asarray(preproc.get("image_mean", [0.485, 0.456, 0.406]), dtype=np.float32)
+    std = np.asarray(preproc.get("image_std", [0.229, 0.224, 0.225]), dtype=np.float32)
+    arr = (arr - mean) / std
+    chw = np.transpose(arr, (2, 0, 1))  # (3,H,W)
+    return chw[None, ...].astype(np.float32)  # (1,3,H,W)
+
+
+def _fit_512(vec: np.ndarray) -> list[float]:
+    """L2-normalize, pad/truncate to EXACTLY 512, L2-normalize again."""
+    n = float(np.linalg.norm(vec))
+    if n > 0:
+        vec = vec / n
+    if vec.shape[0] < EMBED_DIM:
+        vec = np.pad(vec, (0, EMBED_DIM - vec.shape[0]))
+    else:
+        vec = vec[:EMBED_DIM]
+    n = float(np.linalg.norm(vec))
+    if n > 0:
+        vec = vec / n
+    return [float(x) for x in vec.astype(np.float32).tolist()]
+
+
+def _embed_onnx(pil_image) -> list[float]:
+    """Learned DINOv2-small embedding (CLS token), fit to 512 dims.
+
+    Falls back to the classical descriptor (never raises) if the model is
+    unavailable or inference fails.
+    """
+    state = _ensure_onnx()
+    if state is None:
+        return _embed_classical(pil_image)
+    try:
+        x = _preprocess_onnx(pil_image, state["preproc"])
+        outputs = state["session"].run(None, {state["input_name"]: x})
+        out = np.asarray(outputs[0])  # last_hidden_state (1, tokens, hidden)
+        if out.ndim == 3:
+            cls = out[0, 0, :]  # CLS token
+        elif out.ndim == 2:
+            cls = out[0, :]  # already pooled
+        else:
+            cls = out.reshape(-1)
+        return _fit_512(cls.astype(np.float32))
+    except Exception as e:  # noqa: BLE001 - degrade to classical on any error
+        print(f"[embed:onnx] inference failed; falling back to classical: {e}", file=sys.stderr)
+        return _embed_classical(pil_image)

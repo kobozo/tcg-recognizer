@@ -1,6 +1,9 @@
 FROM python:3.12-slim
 WORKDIR /app
-# opencv-python-headless needs these shared libs to import cleanly.
+# opencv-python-headless needs these shared libs to import cleanly; libgomp1
+# also satisfies onnxruntime (used by the optional EMBEDDER=onnx backend, whose
+# DINOv2 model is lazily downloaded at runtime to the mounted /models cache — no
+# model is baked into the image).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libglib2.0-0 libgomp1 \
   && rm -rf /var/lib/apt/lists/*
