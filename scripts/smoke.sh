@@ -5,6 +5,12 @@ set -euo pipefail
 HOST="${PUBLIC_HOST:-127.0.0.1}"
 cd "$(dirname "$0")/.."
 [ -f .env ] || cp .env.example .env
+# The e2e exercises the full multi-TCG capability (default deployment is Pokémon-only).
+if grep -q '^ENABLED_GAMES=' .env; then
+  sed -i 's/^ENABLED_GAMES=.*/ENABLED_GAMES=pokemon,magic/' .env
+else
+  printf '\nENABLED_GAMES=pokemon,magic\n' >> .env
+fi
 BASE="http://${HOST}"
 DC="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 
