@@ -176,4 +176,7 @@ async def predict(
         "image_url": top[5],
         "game": game,
         "model_version": MODEL_VERSION,
+        # The embedding used — persisted on the scan so confirmed feedback can be
+        # fed back into the index (active-learning flywheel).
+        "embedding": [float(x) for x in vec],
     }

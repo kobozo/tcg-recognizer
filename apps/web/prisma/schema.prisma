@@ -39,6 +39,21 @@ model Scan {
   modelVersion String
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feedback     Feedback?
+}
+
+/// Human-in-the-loop label: the user confirms or corrects a scan's recognition.
+/// These become the active-learning signal the trainer feeds back into the index.
+model Feedback {
+  id            String   @id @default(cuid())
+  scanId        String   @unique
+  userId        String
+  game          String
+  predictedName String
+  correctedName String
+  correct       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  scan          Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
 }
 
 model ModelVersion {

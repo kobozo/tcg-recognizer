@@ -59,6 +59,62 @@ def register_model_version(version: str, metrics: dict, size: int, run_id) -> No
     print(f"[registry] promoted {version} (isCurrent=true)")
 
 
+def _vec_literal(vec) -> str:
+    return "[" + ",".join(repr(float(x)) for x in vec) + "]"
+
+
+def incorporate_feedback(game: str) -> int:
+    """Active learning: add user-confirmed scan embeddings to the index.
+
+    Each confirmed/corrected scan gives a (real-photo embedding -> card name)
+    label. We insert those vectors as extra reference points in card_vectors so
+    future similar photos match the confirmed card. All in-DB; no image access
+    needed (the scan's embedding is persisted in its predictions JSON).
+    """
+    dsn = os.environ.get("DATABASE_URL")
+    if not dsn:
+        return 0
+    try:
+        import psycopg2
+    except Exception:
+        return 0
+    added = 0
+    conn = None
+    try:
+        conn = psycopg2.connect(dsn)
+        with conn, conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('public.\"Feedback\"')")
+            if cur.fetchone()[0] is None:
+                return 0
+            cur.execute(
+                'SELECT f.id, f."correctedName", s.predictions->\'embedding\' '
+                'FROM "Feedback" f JOIN "Scan" s ON s.id = f."scanId" '
+                "WHERE f.game = %s AND f.\"correctedName\" <> '' "
+                "AND (s.predictions ? 'embedding')",
+                (game,),
+            )
+            for fid, name, emb in cur.fetchall():
+                if isinstance(emb, str):
+                    emb = json.loads(emb)
+                if not isinstance(emb, (list, tuple)) or len(emb) == 0:
+                    continue
+                cur.execute(
+                    "INSERT INTO card_vectors "
+                    "(id, game, card_id, name, set_name, number, rarity, type, image_url, embedding) "
+                    "VALUES (%s,%s,%s,%s,'','','','','', %s::vector) "
+                    "ON CONFLICT (id) DO UPDATE SET embedding=EXCLUDED.embedding, name=EXCLUDED.name",
+                    (f"fb:{fid}", game, f"fb:{fid}", name, _vec_literal(emb)),
+                )
+                added += 1
+    except Exception as e:  # noqa: BLE001 - active learning is best-effort
+        print(f"[feedback] incorporation skipped: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
+    print(f"[feedback] incorporated {added} confirmed labels into the index")
+    return added
+
+
 def main() -> None:
     cfg = load_cfg()
     version = f"embed-v1-{uuid.uuid4().hex[:8]}"
@@ -102,7 +158,9 @@ def main() -> None:
     # --- Core pipeline (must succeed regardless of MLflow) ---
     items = ingest(cfg)
     count = build_index(items, cfg)
+    fb_added = incorporate_feedback(cfg["game"])
     metrics = evaluate(items, count, cfg)
+    metrics["feedback_incorporated"] = fb_added
 
     if mlflow is not None:
         try:
