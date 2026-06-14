@@ -8,6 +8,7 @@ index) is identical to what a learned-embedding model would produce; only the
 import os
 
 from embedding import embed, EMBED_DIM
+from pipelines.ingestion import load_image
 
 
 def _vec_literal(vec) -> str:
@@ -42,12 +43,26 @@ def build_index(items: list[dict], cfg) -> int:
             )
             cur.execute("DELETE FROM card_vectors WHERE game = %s;", (game,))
 
-            for it in items:
-                vec = embed(it["image"])
+            total = len(items)
+            for i, it in enumerate(items, 1):
+                try:
+                    img = load_image(it)
+                except Exception as e:  # noqa: BLE001 - skip unreadable images
+                    print(f"[training] skip {it['card_id']}: {e}")
+                    continue
+                vec = embed(img)
+                # Release the decoded image promptly so a 20k-card run stays
+                # within a bounded memory footprint.
+                try:
+                    img.close()
+                except Exception:
+                    pass
                 if len(vec) != EMBED_DIM:
                     raise ValueError(
                         f"embedding dim {len(vec)} != {EMBED_DIM} for {it['card_id']}"
                     )
+                if i % 1000 == 0 or i == total:
+                    print(f"[training] embedded {i}/{total}")
                 cur.execute(
                     "INSERT INTO card_vectors "
                     "(id, game, card_id, name, set_name, number, rarity, type, "
