@@ -1,0 +1,7 @@
+# Config-driven pipeline (mirrors the MLOps course's config.yml pattern).
+game: pokemon
+sample_size: 40   # official cards pulled to build the reference index
+holdout: 8        # held-out cards perturbed to evaluate recall@1
+model:
+  type: phash     # perceptual-hash baseline; Phase 3 swaps in CLIP embeddings
+  hash_size: 16
