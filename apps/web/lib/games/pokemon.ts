@@ -1,6 +1,7 @@
 // Pokémon provider — Pokémon TCG API (https://docs.pokemontcg.io). Free; set
 // POKEMON_TCG_API_KEY for higher rate limits.
 import type { GameCard, GameProvider, GameSet } from "./types";
+import { preferredCurrency } from "./types";
 import type { Enrichment } from "@/lib/types";
 
 const API = "https://api.pokemontcg.io/v2";
@@ -103,19 +104,28 @@ export const pokemonProvider: GameProvider = {
       const c = json.data?.[0];
       if (!c) return null;
 
-      // Prefer TCGplayer market price (USD); fall back to Cardmarket trend (EUR).
-      let price: number | undefined;
-      let currency: string | undefined;
-      const tp = c.tcgplayer?.prices ?? {};
-      const markets = Object.values(tp)
+      // EUR (Cardmarket — the European marketplace) vs USD (TCGplayer). Prefer
+      // the deployment's currency (Belgium → EUR by default).
+      const cm = c.cardmarket?.prices;
+      const eur =
+        typeof cm?.trendPrice === "number" && cm.trendPrice > 0
+          ? cm.trendPrice
+          : typeof cm?.averageSellPrice === "number" && cm.averageSellPrice > 0
+            ? cm.averageSellPrice
+            : undefined;
+      const usdMarkets = Object.values(c.tcgplayer?.prices ?? {})
         .map((p) => p?.market)
         .filter((n): n is number => typeof n === "number" && n > 0);
-      if (markets.length > 0) {
-        price = Math.max(...markets);
-        currency = "USD";
-      } else if (typeof c.cardmarket?.prices?.trendPrice === "number") {
-        price = c.cardmarket.prices.trendPrice;
-        currency = "EUR";
+      const usd = usdMarkets.length > 0 ? Math.max(...usdMarkets) : undefined;
+
+      let price: number | undefined;
+      let currency: string | undefined;
+      if (preferredCurrency() === "EUR") {
+        if (eur !== undefined) [price, currency] = [eur, "EUR"];
+        else if (usd !== undefined) [price, currency] = [usd, "USD"];
+      } else {
+        if (usd !== undefined) [price, currency] = [usd, "USD"];
+        else if (eur !== undefined) [price, currency] = [eur, "EUR"];
       }
 
       return {
@@ -136,5 +146,5 @@ type PriceCard = {
   attacks?: { name: string }[];
   images?: { small?: string; large?: string };
   tcgplayer?: { prices?: Record<string, { market?: number } | null> };
-  cardmarket?: { prices?: { trendPrice?: number } };
+  cardmarket?: { prices?: { trendPrice?: number; averageSellPrice?: number } };
 };

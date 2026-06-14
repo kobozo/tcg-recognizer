@@ -1,5 +1,6 @@
 // Magic: The Gathering provider — Scryfall (https://scryfall.com/docs/api). Free, no key.
 import type { GameCard, GameProvider, GameSet } from "./types";
+import { preferredCurrency } from "./types";
 import type { Enrichment } from "@/lib/types";
 
 const API = "https://api.scryfall.com";
@@ -117,16 +118,20 @@ export const magicProvider: GameProvider = {
         card_faces?: { image_uris?: { normal?: string; small?: string } }[];
       };
       const p = c.prices ?? {};
+      const usdN = Number(p.usd ?? p.usd_foil);
+      const eurN = Number(p.eur);
+      const usd = Number.isFinite(usdN) && usdN > 0 ? usdN : undefined;
+      const eur = Number.isFinite(eurN) && eurN > 0 ? eurN : undefined;
+
       let price: number | undefined;
       let currency: string | undefined;
-      const usd = Number(p.usd ?? p.usd_foil);
-      const eur = Number(p.eur);
-      if (Number.isFinite(usd) && usd > 0) {
-        price = usd;
-        currency = "USD";
-      } else if (Number.isFinite(eur) && eur > 0) {
-        price = eur;
-        currency = "EUR";
+      // Prefer the deployment's currency (Belgium → EUR by default).
+      if (preferredCurrency() === "EUR") {
+        if (eur !== undefined) [price, currency] = [eur, "EUR"];
+        else if (usd !== undefined) [price, currency] = [usd, "USD"];
+      } else {
+        if (usd !== undefined) [price, currency] = [usd, "USD"];
+        else if (eur !== undefined) [price, currency] = [eur, "EUR"];
       }
       return {
         price,
