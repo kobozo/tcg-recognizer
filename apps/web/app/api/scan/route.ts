@@ -31,6 +31,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "File must be an image" }, { status: 400 });
   }
 
+  const gameRaw = form.get("game");
+  const game = gameRaw === "magic" ? "magic" : "pokemon";
+
   // Persist the uploaded bytes to the uploads volume.
   await mkdir(UPLOADS_DIR, { recursive: true });
   const fileName = `${randomUUID()}.jpg`;
@@ -39,12 +42,13 @@ export async function POST(req: Request) {
   await writeFile(imagePath, bytes);
 
   // Predict (stubbed inference) then best-effort enrichment.
-  const predictions = (await predictCard(image)) as CardPredictions;
+  const predictions = (await predictCard(image, game)) as CardPredictions;
   const enrichment = await enrichCard(predictions.name.value);
 
   const scan = await db.scan.create({
     data: {
       userId: session.user.id,
+      game,
       imagePath,
       predictions: { ...predictions, enrichment },
       modelVersion: predictions.model_version,

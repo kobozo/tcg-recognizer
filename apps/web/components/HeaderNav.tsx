@@ -26,7 +26,7 @@ export default function HeaderNav({
     { href: "/", label: "Home" },
     ...(isAuthed ? [{ href: "/collection", label: "My collection" }] : []),
     { href: "/scan", label: "Add card" },
-    { href: "/sets", label: "Sets" },
+    { href: "/sets", label: "Browse" },
     ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
     { href: "/demos", label: "Demos" },
   ];

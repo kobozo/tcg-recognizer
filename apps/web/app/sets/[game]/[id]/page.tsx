@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Check } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getSet, getSetCards, normalizeSetName } from "@/lib/pokemon";
+import { getProvider, getGameMeta, normalizeSetName } from "@/lib/games";
 import Container from "@/components/ui/Container";
 import { Card } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -11,26 +11,34 @@ import type { CardPredictions } from "@/lib/types";
 
 export const revalidate = 86400;
 
-export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const set = await getSet(id);
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ game: string; id: string }>;
+}) {
+  const { game, id } = await params;
+  const provider = getProvider(game);
+  const set = provider ? await provider.getSet(id) : null;
   return { title: `${set?.name ?? "Set"} · TCG Recognizer` };
 }
 
 export default async function SetDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ game: string; id: string }>;
 }) {
-  const { id } = await params;
-  const [set, cards] = await Promise.all([getSet(id), getSetCards(id)]);
+  const { game, id } = await params;
+  const meta = getGameMeta(game);
+  const provider = getProvider(game);
+  if (!meta || !provider) notFound();
+
+  const [set, cards] = await Promise.all([provider.getSet(id), provider.getSetCards(id)]);
   if (!set) notFound();
 
-  // Which card names does the signed-in user own from this set?
   const ownedNames = new Set<string>();
   const session = await auth();
   if (session?.user) {
-    const rows = await db.scan.findMany({ where: { userId: session.user.id } });
+    const rows = await db.scan.findMany({ where: { userId: session.user.id, game } });
     for (const row of rows) {
       const p = row.predictions as unknown as CardPredictions;
       if (p?.set?.value && normalizeSetName(p.set.value) === normalizeSetName(set.name)) {
@@ -46,18 +54,21 @@ export default async function SetDetailPage({
     <Container className="py-10 sm:py-14">
       <div className="animate-fade-up">
         <Link
-          href="/sets"
+          href={`/sets/${game}`}
           className="mb-6 inline-flex items-center gap-1 text-sm text-muted hover:text-foreground"
         >
-          <ArrowLeft className="h-4 w-4" aria-hidden /> All sets
+          <ArrowLeft className="h-4 w-4" aria-hidden /> All {meta.name} sets
         </Link>
 
         <div className="mb-8 flex flex-wrap items-center gap-5">
           {set.logo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={set.logo} alt={`${set.name} logo`} className="h-16 object-contain" />
+            <img src={set.logo} alt={`${set.name} logo`} className="h-16 w-16 object-contain" />
           )}
           <div className="flex-1">
+            <span className={`mb-1 inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${meta.accent}`}>
+              {meta.name}
+            </span>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{set.name}</h1>
             <p className="text-sm text-muted">
               {set.series}

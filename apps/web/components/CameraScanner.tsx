@@ -15,8 +15,13 @@ import Button from "@/components/ui/Button";
 
 type Phase = "idle" | "requesting" | "streaming" | "captured" | "submitting";
 
-export default function CameraScanner() {
+export default function CameraScanner({
+  games,
+}: {
+  games: { id: string; name: string }[];
+}) {
   const router = useRouter();
+  const [game, setGame] = useState(games[0]?.id ?? "pokemon");
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -118,6 +123,7 @@ export default function CameraScanner() {
     try {
       const form = new FormData();
       form.append("image", captured.blob, "card.jpg");
+      form.append("game", game);
       const res = await fetch("/api/scan", { method: "POST", body: form });
       if (res.status === 401) {
         setError("Your session expired. Please log in again.");
@@ -139,6 +145,31 @@ export default function CameraScanner() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Game selector */}
+      {games.length > 1 && (
+        <div
+          role="group"
+          aria-label="Choose a game"
+          className="mx-auto inline-flex rounded-xl border border-border bg-surface/60 p-1"
+        >
+          {games.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              onClick={() => setGame(g.id)}
+              aria-pressed={game === g.id}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+                game === g.id
+                  ? "bg-primary text-primary-fg"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              {g.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Stage */}
       <div className="relative mx-auto aspect-[3/4] w-full max-w-md overflow-hidden rounded-2xl border border-border bg-black/40">
         {/* Live video */}

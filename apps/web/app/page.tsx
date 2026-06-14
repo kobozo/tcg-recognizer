@@ -16,9 +16,9 @@ import Badge from "@/components/ui/Badge";
 import Container from "@/components/ui/Container";
 
 export const metadata: Metadata = {
-  title: "TCG Card Recognizer — your Pokémon collection",
+  title: "TCG Card Recognizer — your trading card collection",
   description:
-    "Build your Pokémon card collection by scanning cards with your camera. Track sets, completion and rarities — recognition is instant.",
+    "Build your trading card collection by scanning cards with your camera — Pokémon, Magic and more. Track sets, completion and rarities, instantly.",
 };
 
 const features = [
@@ -38,7 +38,7 @@ const features = [
     icon: Library,
     title: "Every official set",
     description:
-      "Browse all Pokémon sets from the official TCG API and see exactly how many cards of each you own.",
+      "Browse all sets across each game from official APIs (Pokémon TCG API, Scryfall) and see how many of each you own.",
   },
   {
     icon: TrendingUp,
@@ -58,14 +58,14 @@ export default async function Home() {
       <Container className="flex flex-col items-center gap-6 text-center">
         <Badge tone="accent" className="animate-fade-up">
           <Sparkles className="h-3.5 w-3.5" />
-          Your Pokémon card collection
+          Pokémon · Magic · and more
         </Badge>
         <h1 className="animate-fade-up max-w-3xl text-4xl font-bold tracking-tight sm:text-6xl">
-          Build your <span className="text-gradient">Pokémon collection</span> by scanning
+          Build your <span className="text-gradient">card collection</span> by scanning
         </h1>
         <p className="animate-fade-up max-w-xl text-lg text-muted">
-          Snap a card with your camera and it&apos;s instantly recognized and added to your
-          collection. Track sets, completion and rarities — all in one place.
+          Snap any supported card — Pokémon, Magic and more — and it&apos;s instantly recognized
+          and added to your collection. Track sets, completion and rarities, all in one place.
         </p>
         <div className="animate-fade-up flex flex-col items-center gap-3 sm:flex-row">
           <Link href="/register" className={buttonVariants({ variant: "primary", size: "lg" })}>

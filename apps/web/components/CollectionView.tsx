@@ -9,6 +9,7 @@ import Badge from "@/components/ui/Badge";
 export type CollectionCard = {
   id: string;
   name: string;
+  game: string; // display name, e.g. "Pokémon"
   set: string;
   rarity: string;
   date: string;
@@ -17,27 +18,29 @@ export type CollectionCard = {
 
 export default function CollectionView({ cards }: { cards: CollectionCard[] }) {
   const [query, setQuery] = useState("");
+  const [game, setGame] = useState("all");
   const [set, setSet] = useState("all");
   const [rarity, setRarity] = useState("all");
 
-  const sets = useMemo(
-    () => [...new Set(cards.map((c) => c.set))].sort(),
-    [cards],
+  const games = useMemo(() => [...new Set(cards.map((c) => c.game))].sort(), [cards]);
+  // Sets/rarities narrow to the chosen game for relevant options.
+  const scoped = useMemo(
+    () => (game === "all" ? cards : cards.filter((c) => c.game === game)),
+    [cards, game],
   );
-  const rarities = useMemo(
-    () => [...new Set(cards.map((c) => c.rarity))].sort(),
-    [cards],
-  );
+  const sets = useMemo(() => [...new Set(scoped.map((c) => c.set))].sort(), [scoped]);
+  const rarities = useMemo(() => [...new Set(scoped.map((c) => c.rarity))].sort(), [scoped]);
 
   const filtered = useMemo(
     () =>
       cards.filter(
         (c) =>
+          (game === "all" || c.game === game) &&
           (set === "all" || c.set === set) &&
           (rarity === "all" || c.rarity === rarity) &&
           (query === "" || c.name.toLowerCase().includes(query.toLowerCase())),
       ),
-    [cards, query, set, rarity],
+    [cards, query, game, set, rarity],
   );
 
   const selectClass =
@@ -45,8 +48,7 @@ export default function CollectionView({ cards }: { cards: CollectionCard[] }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Controls */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative flex-1">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
@@ -61,8 +63,25 @@ export default function CollectionView({ cards }: { cards: CollectionCard[] }) {
             className="h-11 w-full rounded-xl border border-border bg-background/60 pl-10 pr-4 text-sm text-foreground placeholder:text-muted/70 focus:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Filter className="h-4 w-4 text-muted" aria-hidden />
+          <select
+            value={game}
+            onChange={(e) => {
+              setGame(e.target.value);
+              setSet("all");
+              setRarity("all");
+            }}
+            aria-label="Filter by game"
+            className={selectClass}
+          >
+            <option value="all">All games</option>
+            {games.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
           <select
             value={set}
             onChange={(e) => setSet(e.target.value)}
@@ -115,9 +134,10 @@ export default function CollectionView({ cards }: { cards: CollectionCard[] }) {
                   <div className="p-3">
                     <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
                     <p className="truncate text-xs text-muted">{c.set}</p>
-                    <Badge tone="accent" className="mt-2">
-                      {c.rarity}
-                    </Badge>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      <Badge tone="neutral">{c.game}</Badge>
+                      <Badge tone="accent">{c.rarity}</Badge>
+                    </div>
                   </div>
                 </Card>
               </Link>

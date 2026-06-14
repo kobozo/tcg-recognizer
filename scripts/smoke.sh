@@ -48,12 +48,17 @@ curl -s -o /dev/null -b "$JAR" -c "$JAR" -X POST \
   --data-urlencode "callbackUrl=${BASE}/scan"
 grep -q 'authjs.session-token' "$JAR" || { echo "FAIL: no session cookie after sign-in"; cat "$JAR"; $DC logs web --tail=60; exit 1; }
 
-echo "==> upload a card to /api/scan"
+echo "==> add a Pokémon card to /api/scan"
 SCAN_JSON=$(curl -s -b "$JAR" -X POST "${BASE}/api/scan" \
-  -F "image=@scripts/fixtures/card.jpg;type=image/jpeg")
+  -F "image=@scripts/fixtures/card.jpg;type=image/jpeg" -F "game=pokemon")
 SCAN_ID=$(echo "$SCAN_JSON" | sed -E 's/.*"id":"([^"]+)".*/\1/')
 [ -n "$SCAN_ID" ] && [ "$SCAN_ID" != "$SCAN_JSON" ] || { echo "FAIL: scan returned: $SCAN_JSON"; $DC logs web --tail=60; exit 1; }
 echo "    scan id = ${SCAN_ID}"
+
+echo "==> add a Magic card to /api/scan (multi-TCG)"
+MAGIC_JSON=$(curl -s -b "$JAR" -X POST "${BASE}/api/scan" \
+  -F "image=@scripts/fixtures/card.jpg;type=image/jpeg" -F "game=magic")
+echo "$MAGIC_JSON" | grep -q '"id"' || { echo "FAIL: magic scan returned: $MAGIC_JSON"; exit 1; }
 
 echo "==> fetch result page /scan/${SCAN_ID}"
 code=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "${BASE}/scan/${SCAN_ID}")
@@ -63,9 +68,11 @@ echo "==> fetch /collection (My collection)"
 code=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "${BASE}/collection")
 [ "$code" = "200" ] || { echo "FAIL: /collection returned $code"; exit 1; }
 
-echo "==> fetch /sets (public Pokémon sets)"
-code=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "${BASE}/sets")
-[ "$code" = "200" ] || { echo "FAIL: /sets returned $code"; exit 1; }
+echo "==> fetch /sets hub + per-game sets (multi-TCG)"
+for p in /sets /sets/pokemon /sets/magic; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "${BASE}${p}")
+  [ "$code" = "200" ] || { echo "FAIL: ${p} returned $code"; exit 1; }
+done
 
 echo "==> signed-in / should redirect to /collection (collection-first)"
 loc=$(curl -s -o /dev/null -w '%{redirect_url}' -b "$JAR" "${BASE}/")
@@ -81,5 +88,5 @@ $DC exec -T -e ADMIN_EMAIL="${ADMIN_EMAIL:-admin@tcg.local}" -e ADMIN_PASSWORD="
 ADMIN_COUNT=$($DC exec -T db psql -U "${POSTGRES_USER:-tcg}" -d "${POSTGRES_DB:-tcg}" -tAc "SELECT count(*) FROM \"User\" WHERE role='ADMIN'")
 [ "${ADMIN_COUNT// /}" -ge 1 ] || { echo "FAIL: admin seed did not create an admin (count=$ADMIN_COUNT)"; exit 1; }
 
-echo "E2E OK (register -> login -> scan -> result -> admin seed)"
+echo "E2E OK (register -> login -> scan pokemon+magic -> result -> collection -> sets hub/pokemon/magic -> admin)"
 echo "SMOKE OK"

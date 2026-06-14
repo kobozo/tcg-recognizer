@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { Camera, Layers, Library, Sparkles, Boxes } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { listSets, normalizeSetName } from "@/lib/pokemon";
+import { getGameMeta, getProvider, listGames, normalizeSetName } from "@/lib/games";
 import Container from "@/components/ui/Container";
 import { Card } from "@/components/ui/Card";
 import { buttonVariants } from "@/components/ui/Button";
@@ -39,21 +39,19 @@ export default async function CollectionPage() {
   const session = await auth();
   if (!session?.user) redirect("/login?callbackUrl=/collection");
 
-  const [rows, sets] = await Promise.all([
-    db.scan.findMany({
-      where: { userId: session.user.id },
-      orderBy: { createdAt: "desc" },
-    }),
-    listSets(),
-  ]);
+  const rows = await db.scan.findMany({
+    where: { userId: session.user.id },
+    orderBy: { createdAt: "desc" },
+  });
 
-  const totalsBySet = new Map(sets.map((s) => [normalizeSetName(s.name), s]));
+  const gameName = (id: string) => getGameMeta(id)?.name ?? id;
 
   const cards: CollectionCard[] = rows.map((s) => {
     const p = s.predictions as unknown as CardPredictions;
     return {
       id: s.id,
       name: p?.name?.value ?? "Unknown card",
+      game: gameName(s.game),
       set: p?.set?.value ?? "Unknown set",
       rarity: p?.rarity?.value ?? "—",
       date: s.createdAt.toISOString(),
@@ -61,25 +59,39 @@ export default async function CollectionPage() {
     };
   });
 
-  // Per-set completion: owned count vs the official set total (when known).
-  const ownedBySet = new Map<string, number>();
-  for (const c of cards) ownedBySet.set(c.set, (ownedBySet.get(c.set) ?? 0) + 1);
+  // Which games does the user have cards in? Fetch official totals for each.
+  const gamesPresent = [...new Set(rows.map((r) => r.game))];
+  const totalsByGameSet = new Map<string, number>(); // `${game}:${normName}` -> total
+  await Promise.all(
+    gamesPresent.map(async (g) => {
+      const provider = getProvider(g);
+      if (!provider) return;
+      const sets = await provider.listSets();
+      for (const s of sets) totalsByGameSet.set(`${g}:${normalizeSetName(s.name)}`, s.total);
+    }),
+  );
 
-  const setProgress = [...ownedBySet.entries()]
-    .map(([name, owned]) => {
-      const official = totalsBySet.get(normalizeSetName(name));
-      return {
-        name,
-        owned,
-        total: official?.total ?? 0,
-        logo: official?.logo,
-      };
-    })
+  // Per (game, set) completion.
+  const ownedByGameSet = new Map<string, { game: string; set: string; owned: number }>();
+  for (const r of rows) {
+    const p = r.predictions as unknown as CardPredictions;
+    const setName = p?.set?.value || "Unknown set";
+    const key = `${r.game}:${setName}`;
+    const cur = ownedByGameSet.get(key) ?? { game: r.game, set: setName, owned: 0 };
+    cur.owned += 1;
+    ownedByGameSet.set(key, cur);
+  }
+  const setProgress = [...ownedByGameSet.values()]
+    .map((e) => ({
+      ...e,
+      gameLabel: gameName(e.game),
+      total: totalsByGameSet.get(`${e.game}:${normalizeSetName(e.set)}`) ?? 0,
+    }))
     .sort((a, b) => b.owned - a.owned);
 
-  const uniqueNames = new Set(cards.map((c) => c.name)).size;
-  const distinctSets = ownedBySet.size;
-  const distinctRarities = new Set(cards.map((c) => c.rarity)).size;
+  const uniqueNames = new Set(cards.map((c) => `${c.game}:${c.name}`)).size;
+  const distinctSets = ownedByGameSet.size;
+  const distinctGames = gamesPresent.length;
 
   if (cards.length === 0) {
     return (
@@ -90,8 +102,8 @@ export default async function CollectionPage() {
           </span>
           <h1 className="text-2xl font-semibold tracking-tight">Start your collection</h1>
           <p className="mx-auto mt-2 max-w-sm text-muted">
-            Scan a Pokémon card with your camera and it lands here. Build sets, track rarities
-            and watch your collection grow.
+            Scan a card with your camera and it lands here. Collect across{" "}
+            {listGames().map((g) => g.name).join(", ")} and more.
           </p>
           <Link
             href="/scan"
@@ -107,7 +119,6 @@ export default async function CollectionPage() {
   return (
     <Container className="py-10 sm:py-14">
       <div className="animate-fade-up">
-        {/* Header */}
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">My collection</h1>
@@ -123,24 +134,25 @@ export default async function CollectionPage() {
           </div>
         </div>
 
-        {/* Stats */}
         <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard icon={Layers} label="Cards" value={cards.length} />
           <StatCard icon={Sparkles} label="Unique" value={uniqueNames} />
           <StatCard icon={Boxes} label="Sets" value={distinctSets} />
-          <StatCard icon={Library} label="Rarities" value={distinctRarities} />
+          <StatCard icon={Library} label="Games" value={distinctGames} />
         </div>
 
-        {/* Set completion */}
         <section className="mb-10">
           <h2 className="mb-3 text-lg font-semibold tracking-tight">Set completion</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {setProgress.map((sp) => {
               const pct = sp.total > 0 ? Math.min(100, Math.round((sp.owned / sp.total) * 100)) : 0;
               return (
-                <Card key={sp.name} className="p-4">
+                <Card key={`${sp.game}:${sp.set}`} className="p-4">
                   <div className="mb-2 flex items-center justify-between gap-3">
-                    <span className="truncate font-medium">{sp.name}</span>
+                    <span className="truncate font-medium">
+                      <span className="text-muted">{sp.gameLabel} · </span>
+                      {sp.set}
+                    </span>
                     <span className="shrink-0 text-sm text-muted">
                       {sp.owned}
                       {sp.total > 0 ? ` / ${sp.total}` : ""}
@@ -152,16 +164,13 @@ export default async function CollectionPage() {
                       style={{ width: sp.total > 0 ? `${pct}%` : "100%" }}
                     />
                   </div>
-                  {sp.total > 0 && (
-                    <p className="mt-1 text-xs text-muted">{pct}% complete</p>
-                  )}
+                  {sp.total > 0 && <p className="mt-1 text-xs text-muted">{pct}% complete</p>}
                 </Card>
               );
             })}
           </div>
         </section>
 
-        {/* Cards */}
         <CollectionView cards={cards} />
       </div>
     </Container>
