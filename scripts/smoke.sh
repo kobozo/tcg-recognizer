@@ -80,6 +80,14 @@ for p in /sets /sets/pokemon /sets/magic; do
   [ "$code" = "200" ] || { echo "FAIL: ${p} returned $code"; exit 1; }
 done
 
+echo "==> fetch /assistant page"
+code=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "${BASE}/assistant")
+[ "$code" = "200" ] || { echo "FAIL: /assistant returned $code"; exit 1; }
+
+echo "==> /api/assistant responds (inert without ANTHROPIC_API_KEY)"
+ASK=$(curl -s -b "$JAR" -X POST "${BASE}/api/assistant" -H 'Content-Type: application/json' -d '{"question":"what is my collection worth?"}')
+echo "$ASK" | grep -q '"error"\|"answer"' || { echo "FAIL: assistant response unexpected: $ASK"; exit 1; }
+
 echo "==> signed-in / should redirect to /collection (collection-first)"
 loc=$(curl -s -o /dev/null -w '%{redirect_url}' -b "$JAR" "${BASE}/")
 case "$loc" in
