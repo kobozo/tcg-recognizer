@@ -6,6 +6,11 @@ game: pokemon
 # catalogue). Set to an integer to cap the run (e.g. a quick subset baseline).
 # Falls back to a 30-card live-API sample when no manifest is present.
 sample_size: all
+# Skip the first N manifest cards before taking `sample_size`. Default 0 = take
+# from the start (unchanged). Set >0 (via SAMPLE_OFFSET) to index/eval a card
+# range DISJOINT from the learned head's training set — an honest held-out-CARD
+# generalization eval (scripts/eval-heldout.sh).
+sample_offset: 0
 embed_dim: 512    # classical visual descriptor dimensionality (pgvector vector(512))
 
 # --- Realistic synthetic-photo eval harness ---

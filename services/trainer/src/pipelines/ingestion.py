@@ -12,7 +12,10 @@ Source precedence:
   3. Synthetic fallback — colored images, so a rebuild never hard-fails.
 
 `sample_size` may be an int (cap) or the string "all"/0 to use the entire
-manifest.
+manifest. `sample_offset` skips the first N manifest cards before taking
+`sample_size` — this lets us index/eval a card range DISJOINT from a model's
+training set (e.g. the learned head trained on the first ~3k cards), giving an
+HONEST held-out-CARD generalization eval (see scripts/eval-heldout.sh).
 """
 import io
 import json
@@ -47,10 +50,14 @@ def load_image(item: dict) -> Image.Image:
     return Image.open(item["image_path"]).convert("RGB")
 
 
-def _ingest_from_manifest(game: str, manifest_path: str, cap: int | None) -> list[dict]:
+def _ingest_from_manifest(
+    game: str, manifest_path: str, cap: int | None, offset: int = 0
+) -> list[dict]:
     game_dir, _ = _dataset_paths(game)
     base = os.environ.get("DATASET_DIR", "/data")
+    offset = max(0, int(offset or 0))
     items: list[dict] = []
+    seen = 0  # manifest cards inspected (with a resolvable image), pre-offset
     with open(manifest_path) as f:
         for line in f:
             line = line.strip()
@@ -62,6 +69,11 @@ def _ingest_from_manifest(game: str, manifest_path: str, cap: int | None) -> lis
                 continue
             abs_path = os.path.join(base, rel)
             if not (os.path.exists(abs_path) and os.path.getsize(abs_path) > 0):
+                continue
+            # Skip the first `offset` resolvable cards so the kept range is
+            # disjoint from a model's training set (held-out-card eval).
+            seen += 1
+            if seen <= offset:
                 continue
             items.append(
                 {
@@ -118,18 +130,19 @@ def ingest(cfg) -> list[dict]:
     (API/synthetic) or an `image_path` (local manifest); use load_image()."""
     game = cfg.get("game", "pokemon")
     cap = _cap(cfg.get("sample_size", 30))
+    offset = max(0, int(cfg.get("sample_offset", 0) or 0))
 
     _, manifest_path = _dataset_paths(game)
     if os.path.exists(manifest_path):
         try:
-            items = _ingest_from_manifest(game, manifest_path, cap)
+            items = _ingest_from_manifest(game, manifest_path, cap, offset)
         except Exception as e:  # noqa: BLE001 - fall back to API/synthetic
             print(f"[ingestion] manifest read failed ({e}); trying API")
             items = []
         if items:
             print(
                 f"[ingestion] {len(items)} cards from manifest "
-                f"(cap={cap}) for game={game}"
+                f"(cap={cap}, offset={offset}) for game={game}"
             )
             return items
         print("[ingestion] manifest present but empty/unreadable; trying API")
