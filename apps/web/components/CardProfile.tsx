@@ -18,7 +18,7 @@ const FIELDS: { key: keyof CardPredictions; label: string }[] = [
   { key: "card_number", label: "Card number" },
 ];
 
-function AttributeRow({ label, pred }: { label: string; pred: Prediction }) {
+function AttributeRow({ label, pred }: { label: string; pred?: Prediction }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
@@ -26,10 +26,10 @@ function AttributeRow({ label, pred }: { label: string; pred: Prediction }) {
           {label}
         </span>
         <Badge tone="neutral" className="text-sm font-semibold text-foreground">
-          {pred.value || "—"}
+          {pred?.value || "—"}
         </Badge>
       </div>
-      <ConfidenceBar conf={pred.conf} />
+      <ConfidenceBar conf={pred?.conf ?? 0} />
     </div>
   );
 }
@@ -37,7 +37,7 @@ function AttributeRow({ label, pred }: { label: string; pred: Prediction }) {
 export default function CardProfile({ imageSrc, predictions, enrichment }: Props) {
   const name = predictions.name;
   const showCandidates =
-    name.conf < 0.6 && Array.isArray(name.candidates) && name.candidates.length > 0;
+    !!name && name.conf < 0.6 && Array.isArray(name.candidates) && name.candidates.length > 0;
 
   return (
     <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
@@ -56,7 +56,7 @@ export default function CardProfile({ imageSrc, predictions, enrichment }: Props
       {/* Right: predicted attributes */}
       <div className="flex flex-col gap-5">
         {FIELDS.map(({ key, label }) => (
-          <AttributeRow key={key} label={label} pred={predictions[key] as Prediction} />
+          <AttributeRow key={key} label={label} pred={predictions[key] as Prediction | undefined} />
         ))}
 
         {showCandidates && (

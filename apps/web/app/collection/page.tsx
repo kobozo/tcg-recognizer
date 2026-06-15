@@ -79,9 +79,12 @@ export default async function CollectionPage() {
   );
 
   // Per (game, set) completion + value.
+  // `value` is bucketed per currency (see formatTotals) so a set's worth is never
+  // a meaningless EUR+USD sum. `owned` counts distinct cards (deduped by a stable
+  // identity) so re-scanning the same card doesn't inflate ownership.
   const ownedByGameSet = new Map<
     string,
-    { game: string; set: string; owned: number; value: number; currency?: string }
+    { game: string; set: string; value: Map<string, number>; seen: Set<string> }
   >();
   for (const r of rows) {
     const stored = r.predictions as unknown as CardPredictions & {
@@ -89,22 +92,34 @@ export default async function CollectionPage() {
     };
     const setName = stored?.set?.value || "Unknown set";
     const key = `${r.game}:${setName}`;
-    const cur = ownedByGameSet.get(key) ?? { game: r.game, set: setName, owned: 0, value: 0 };
-    cur.owned += 1;
+    const cur =
+      ownedByGameSet.get(key) ??
+      { game: r.game, set: setName, value: new Map<string, number>(), seen: new Set<string>() };
+    const identity = `${stored?.name?.value ?? ""}|${stored?.card_number?.value ?? ""}`
+      .trim()
+      .toLowerCase();
+    cur.seen.add(identity);
     const price = stored?.enrichment?.price;
     if (typeof price === "number" && price > 0) {
-      cur.value += price;
-      cur.currency = cur.currency ?? stored?.enrichment?.currency;
+      const currency = stored?.enrichment?.currency || "USD";
+      cur.value.set(currency, (cur.value.get(currency) ?? 0) + price);
     }
     ownedByGameSet.set(key, cur);
   }
   const setProgress = [...ownedByGameSet.values()]
-    .map((e) => ({
-      ...e,
-      gameLabel: gameName(e.game),
-      total: totalsByGameSet.get(`${e.game}:${normalizeSetName(e.set)}`) ?? 0,
-    }))
-    .sort((a, b) => b.value - a.value || b.owned - a.owned);
+    .map((e) => {
+      const valueTotal = [...e.value.values()].reduce((a, b) => a + b, 0);
+      return {
+        game: e.game,
+        set: e.set,
+        owned: e.seen.size,
+        value: e.value,
+        valueTotal,
+        gameLabel: gameName(e.game),
+        total: totalsByGameSet.get(`${e.game}:${normalizeSetName(e.set)}`) ?? 0,
+      };
+    })
+    .sort((a, b) => b.valueTotal - a.valueTotal || b.owned - a.owned);
 
   const distinctSets = ownedByGameSet.size;
   const distinctGames = gamesPresent.length;
@@ -170,9 +185,11 @@ export default async function CollectionPage() {
                       {sp.set}
                     </span>
                     <span className="flex shrink-0 items-center gap-2 text-sm">
-                      {sp.value > 0 && (
+                      {sp.valueTotal > 0 && (
                         <span className="font-semibold text-emerald-300">
-                          {formatMoney(sp.value, sp.currency)}
+                          {[...sp.value.entries()]
+                            .map(([cur, amt]) => formatMoney(amt, cur))
+                            .join(" · ")}
                         </span>
                       )}
                       <span className="text-muted">
@@ -184,10 +201,12 @@ export default async function CollectionPage() {
                   <div className="h-2 overflow-hidden rounded-full bg-white/10">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-primary to-accent"
-                      style={{ width: sp.total > 0 ? `${pct}%` : "100%" }}
+                      style={{ width: sp.total > 0 ? `${pct}%` : "0%" }}
                     />
                   </div>
-                  {sp.total > 0 && <p className="mt-1 text-xs text-muted">{pct}% complete</p>}
+                  <p className="mt-1 text-xs text-muted">
+                    {sp.total > 0 ? `${pct}% complete` : "Set total unknown"}
+                  </p>
                 </Card>
               );
             })}

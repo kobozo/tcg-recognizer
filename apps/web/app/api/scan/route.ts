@@ -60,8 +60,18 @@ export async function POST(req: Request) {
   const bytes = Buffer.from(await image.arrayBuffer());
   await writeFile(imagePath, bytes);
 
-  // Predict (stubbed inference) then best-effort enrichment.
-  const predictions = (await predictCard(image, game, embedding)) as CardPredictions;
+  // Predict (stubbed inference) then best-effort enrichment. A hung or failing
+  // inference service must not surface as an unhandled 500.
+  let predictions: CardPredictions;
+  try {
+    predictions = (await predictCard(image, game, embedding)) as CardPredictions;
+  } catch {
+    return NextResponse.json({ error: "Recognition service unavailable" }, { status: 502 });
+  }
+  // The response is cast from `unknown`; guard its shape before dereferencing.
+  if (!predictions?.name) {
+    return NextResponse.json({ error: "Recognition service unavailable" }, { status: 502 });
+  }
 
   // Opt-in OCR + Qdrant text channel (extras): fold its top matches in as extra
   // candidates. When the user confirms/corrects one, it becomes a Feedback row
@@ -80,7 +90,10 @@ export async function POST(req: Request) {
   // hard cases, a vision-language model reads the card and picks from the
   // shortlist. Best-effort: never throws and is a no-op when disabled, so the
   // default scan behavior is unchanged.
-  if (vlmEnabled()) {
+  // Only disambiguate with the VLM when the recognizer is uncertain — the same
+  // confidence threshold CardProfile uses to surface candidates. A confident
+  // recognition must not be overwritten.
+  if (vlmEnabled() && predictions.name.conf < 0.6) {
     const candidateNames = [
       predictions.name.value,
       ...(predictions.name.candidates ?? []).map((c) => c.value),

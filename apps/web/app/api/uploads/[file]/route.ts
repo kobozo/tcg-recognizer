@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 const UPLOADS_DIR = "/app/uploads";
 
@@ -25,6 +26,16 @@ export async function GET(
   // Guard against path traversal: only allow a bare filename.
   const safeName = path.basename(file);
   const filePath = path.join(UPLOADS_DIR, safeName);
+
+  // Enforce ownership: only serve the file if it belongs to a scan owned by
+  // the session user (prevents IDOR across users).
+  const scan = await db.scan.findFirst({
+    where: { userId: session.user.id, imagePath: filePath },
+    select: { id: true },
+  });
+  if (!scan) {
+    return new Response("Not found", { status: 404 });
+  }
 
   let bytes: Buffer;
   try {
