@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, Filter } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Search, Filter, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { formatMoney } from "@/lib/format";
@@ -20,31 +21,61 @@ export type CollectionCard = {
 };
 
 export default function CollectionView({ cards }: { cards: CollectionCard[] }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [game, setGame] = useState("all");
   const [set, setSet] = useState("all");
   const [rarity, setRarity] = useState("all");
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState<string | null>(null);
 
-  const games = useMemo(() => [...new Set(cards.map((c) => c.game))].sort(), [cards]);
+  // Cards still present (optimistically drop ones the user just deleted).
+  const live = useMemo(() => cards.filter((c) => !removed.has(c.id)), [cards, removed]);
+
+  const games = useMemo(() => [...new Set(live.map((c) => c.game))].sort(), [live]);
   // Sets/rarities narrow to the chosen game for relevant options.
   const scoped = useMemo(
-    () => (game === "all" ? cards : cards.filter((c) => c.game === game)),
-    [cards, game],
+    () => (game === "all" ? live : live.filter((c) => c.game === game)),
+    [live, game],
   );
   const sets = useMemo(() => [...new Set(scoped.map((c) => c.set))].sort(), [scoped]);
   const rarities = useMemo(() => [...new Set(scoped.map((c) => c.rarity))].sort(), [scoped]);
 
   const filtered = useMemo(
     () =>
-      cards.filter(
+      live.filter(
         (c) =>
           (game === "all" || c.game === game) &&
           (set === "all" || c.set === set) &&
           (rarity === "all" || c.rarity === rarity) &&
           (query === "" || c.name.toLowerCase().includes(query.toLowerCase())),
       ),
-    [cards, query, game, set, rarity],
+    [live, query, game, set, rarity],
   );
+
+  async function onDelete(e: React.MouseEvent, id: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.confirm("Remove this card from your collection?")) return;
+    setDeleting(id);
+    try {
+      const res = await fetch(`/api/scan/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        window.alert(
+          res.status === 401
+            ? "Your session expired — please log in again."
+            : "Couldn't delete the card. Please try again.",
+        );
+        return;
+      }
+      setRemoved((prev) => new Set(prev).add(id));
+      router.refresh();
+    } catch {
+      window.alert("Something went wrong. Please try again.");
+    } finally {
+      setDeleting(null);
+    }
+  }
 
   const selectClass =
     "h-11 rounded-xl border border-border bg-background/60 px-3 text-sm text-foreground focus:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60";
@@ -115,7 +146,7 @@ export default function CollectionView({ cards }: { cards: CollectionCard[] }) {
       </div>
 
       <p className="text-sm text-muted">
-        Showing {filtered.length} of {cards.length} cards
+        Showing {filtered.length} of {live.length} cards
       </p>
 
       {filtered.length === 0 ? (
@@ -123,8 +154,18 @@ export default function CollectionView({ cards }: { cards: CollectionCard[] }) {
       ) : (
         <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {filtered.map((c) => (
-            <li key={c.id}>
-              <Link href={`/scan/${c.id}`} className="group block">
+            <li key={c.id} className="group relative">
+              <button
+                type="button"
+                onClick={(e) => onDelete(e, c.id)}
+                disabled={deleting === c.id}
+                aria-label={`Remove ${c.name} from your collection`}
+                title="Remove from collection"
+                className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-background/80 text-muted backdrop-blur transition hover:bg-destructive/20 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+              </button>
+              <Link href={`/scan/${c.id}`} className="block">
                 <Card className="overflow-hidden p-0 transition-all duration-200 hover:border-white/20 hover:shadow-glow">
                   <div className="aspect-[3/4] overflow-hidden bg-black/30">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
