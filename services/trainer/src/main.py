@@ -20,6 +20,12 @@ from pipelines.evaluation import evaluate
 
 CONFIG = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
 MODELS_DIR = os.environ.get("MODEL_DIR", "/models")
+# DVC-readable metrics sink (sub-project 4). The trainer service mounts the host
+# `./ml` dir at /mlout (read-write), so writing here lands a host-visible
+# `ml/metrics.json` that `dvc.yaml`'s train stage declares as a metric. The path
+# is env-overridable and default-safe: we only write when its parent dir exists,
+# so a plain `docker compose run trainer` (no /mlout mount) never crashes.
+METRICS_PATH = os.environ.get("METRICS_PATH", "/mlout/metrics.json")
 
 # Name reported for the active embedder, derived from EMBEDDER so MLflow runs
 # and ModelVersion rows are labelled by which backend produced them.
@@ -129,6 +135,34 @@ def incorporate_feedback(game: str) -> int:
     return added
 
 
+def write_metrics_file(metrics: dict, version: str, count: int, cfg: dict) -> None:
+    """Write the eval metrics to a DVC-readable JSON (sub-project 4).
+
+    Default-safe: writes only when the target directory exists (i.e. the /mlout
+    mount is present). A standalone `python main.py` or a trainer run without the
+    mount silently skips it — DVC integration is opt-in and must never break the
+    core pipeline or CI.
+    """
+    path = METRICS_PATH
+    try:
+        parent = os.path.dirname(path) or "."
+        if not os.path.isdir(parent):
+            print(f"[metrics] {parent} absent; skipping DVC metrics write")
+            return
+        payload = {
+            "version": version,
+            "game": cfg.get("game"),
+            "embed_model": EMBED_MODEL_NAME,
+            "dataset_size": count,
+            **{k: float(v) for k, v in metrics.items()},
+        }
+        with open(path, "w") as f:
+            json.dump(payload, f, indent=2)
+        print(f"[metrics] wrote DVC metrics to {path}")
+    except Exception as e:  # noqa: BLE001 - metrics sink is best-effort
+        print(f"[metrics] skipped: {e}")
+
+
 def main() -> None:
     cfg = load_cfg()
     backend = os.environ.get("EMBEDDER", "classical").strip().lower()
@@ -205,6 +239,9 @@ def main() -> None:
                 print(f"[mlflow] artifact upload skipped: {e}")
     except Exception as e:  # noqa: BLE001 - artifact is optional
         print(f"[artifact] skipped: {e}")
+
+    # DVC-readable metrics (sub-project 4) — host-visible via the /mlout mount.
+    write_metrics_file(metrics, version, count, cfg)
 
     register_model_version(version, metrics, count, run_id)
 

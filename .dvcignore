@@ -1,0 +1,7 @@
+# DVC ignore (sub-project 4) — like .gitignore but for DVC operations.
+# Keep DVC from hashing/tracking transient or non-data files it might encounter
+# when walking tracked directories.
+*.pyc
+__pycache__/
+.DS_Store
+*.swp

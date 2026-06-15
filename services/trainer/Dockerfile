@@ -4,8 +4,10 @@ WORKDIR /app
 # also satisfies onnxruntime (used by the optional EMBEDDER=onnx backend, whose
 # DINOv2 model is lazily downloaded at runtime to the mounted /models cache — no
 # model is baked into the image).
+# git is required by DVC (sub-project 4): `dvc init` / `dvc repro` operate inside
+# an SCM-tracked repo (the host repo is bind-mounted at /repo by scripts/dvc.sh).
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libglib2.0-0 libgomp1 \
+  && apt-get install -y --no-install-recommends libglib2.0-0 libgomp1 git \
   && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

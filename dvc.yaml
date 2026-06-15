@@ -1,0 +1,45 @@
+# DVC pipeline (sub-project 4 — MLOps maturity level 1, mirrors mlops-course-03).
+#
+# Stages call thin wrapper scripts that drive the existing dockerised trainer, so
+# `dvc repro` triggers a *real* training run (no logic is duplicated). Reproduce
+# with:   bash scripts/dvc.sh repro
+# (scripts/dvc.sh runs the `dvc` CLI inside a one-off trainer container with the
+#  host repo bind-mounted, since this host has no usable pip / host dvc.)
+stages:
+  # Optional: pull the full card-image dataset into ml/datasets/pokemon. Run on
+  # demand; the dataset itself is DVC-tracked separately via
+  # `dvc add ml/datasets/pokemon` (pointer: ml/datasets/pokemon.dvc).
+  #
+  # NB: we deliberately do NOT declare ml/datasets/pokemon as a stage `out` here
+  # — DVC forbids one path being both a pipeline output and a `dvc add` target,
+  # and the dataset is the `dvc add`-tracked artefact (so it can be pushed to /
+  # pulled from the local remote and versioned by tag). This stage just (re)fills
+  # the cache; after running it, do `dvc add ml/datasets/pokemon` to re-snapshot.
+  download:
+    cmd: bash scripts/dvc-download.sh
+    deps:
+      - scripts/dvc-download.sh
+      - services/trainer/src/pipelines/download.py
+    always_changed: true       # downloader is resumable; let the user run on demand
+
+  # Reproduce the recognition model: build the pgvector index + run the
+  # synthetic-photo eval harness via the trainer, parametrised from params.yaml.
+  train:
+    cmd: bash scripts/dvc-train.sh
+    deps:
+      - scripts/dvc-train.sh
+      - services/trainer/src
+      - services/trainer/config.yaml
+      - ml/datasets/pokemon       # the DVC-tracked dataset (pokemon.dvc)
+    params:
+      - train.game
+      - train.sample_size
+      - train.embedder
+      - train.embed_dim
+      - train.eval_cards
+      - train.eval_views
+      - train.eval_seed
+      - train.rerank_top_k
+    metrics:
+      - ml/metrics.json:
+          cache: false          # small JSON — committed to git, not the cache

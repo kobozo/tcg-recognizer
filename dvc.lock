@@ -1,0 +1,51 @@
+schema: '2.0'
+stages:
+  download:
+    cmd: bash scripts/dvc-download.sh
+    deps:
+    - path: scripts/dvc-download.sh
+      hash: md5
+      md5: fdef1d11aeeaa5d9cbcaf9272b323b50
+      size: 988
+      isexec: true
+    - path: services/trainer/src/pipelines/download.py
+      hash: md5
+      md5: 2f12b5cd647dd49da3a27d27582c5cc0
+      size: 10815
+  train:
+    cmd: bash scripts/dvc-train.sh
+    deps:
+    - path: ml/datasets/pokemon
+      hash: md5
+      md5: c70a0f88fb9febb5af1b2eba98c82c29.dir
+      size: 3330939330
+      nfiles: 20308
+    - path: scripts/dvc-train.sh
+      hash: md5
+      md5: c1dab8043a1cf838a928065e7eb10e71
+      size: 2814
+      isexec: true
+    - path: services/trainer/config.yaml
+      hash: md5
+      md5: 583294de48bb9c88bd469926f80754b8
+      size: 1042
+    - path: services/trainer/src
+      hash: md5
+      md5: 8033de2fb2d6a8f6c81ad6a9600ed0a1.dir
+      size: 72302
+      nfiles: 11
+    params:
+      params.yaml:
+        train.embed_dim: 512
+        train.embedder: classical
+        train.eval_cards: 200
+        train.eval_seed: 1234
+        train.eval_views: 2
+        train.game: pokemon
+        train.rerank_top_k: 0
+        train.sample_size: 300
+    outs:
+    - path: ml/metrics.json
+      hash: md5
+      md5: 1e304a65e5e5138ea783757fb7eeed2d
+      size: 318

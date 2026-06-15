@@ -1,0 +1,4 @@
+[core]
+    remote = local
+['remote "local"']
+    url = /home/yannick/Erasmus/Project/.dvc-remote

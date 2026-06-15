@@ -6,3 +6,7 @@ psycopg2-binary
 requests==2.32.3
 pyyaml==6.0.2
 onnxruntime
+# DVC core only (sub-project 4): data/pipeline versioning with a local-filesystem
+# remote. No cloud extras (s3/gs/azure) — keeps the image lean. Runs inside the
+# trainer container via scripts/dvc.sh (this host has no usable pip / host dvc).
+dvc==3.*

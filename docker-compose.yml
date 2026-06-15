@@ -92,6 +92,10 @@ services:
       # Full card-image dataset, downloaded once and reused across trainings.
       # Host path is git-ignored (ml/datasets/*).
       - ./ml/datasets:/data
+      # DVC metrics sink (sub-project 4): main.py writes ${METRICS_PATH:-/mlout/
+      # metrics.json}, landing a host-visible ml/metrics.json that dvc.yaml's
+      # `train` stage declares as a DVC metric. Read-write; harmless otherwise.
+      - ./ml:/mlout
     depends_on:
       db:
         condition: service_healthy

@@ -1,0 +1,19 @@
+# DVC pipeline parameters (sub-project 4 — mirrors the MLOps course's params.yaml).
+#
+# These are the tunable knobs `dvc repro` feeds into a real trainer run. They
+# mirror services/trainer/config.yaml's keys; scripts/dvc-train.sh reads them and
+# exports the matching UPPER_SNAKE env vars (SAMPLE_SIZE, EVAL_CARDS, ...) that
+# services/trainer/src/main.py:load_cfg() already understands. config.yaml stays
+# the standalone default; params.yaml is the source of truth for `dvc repro`.
+#
+# Tip: set `sample_size` to a small int (e.g. 300) for a fast end-to-end test of
+# the pipeline; set it back to "all" for a full ~20k-card training.
+train:
+  game: pokemon
+  sample_size: 300        # int = quick subset; "all" = full catalogue
+  embedder: classical     # classical (CPU, no download) | onnx (DINOv2-small)
+  embed_dim: 512
+  eval_cards: 200
+  eval_views: 2
+  eval_seed: 1234
+  rerank_top_k: 0

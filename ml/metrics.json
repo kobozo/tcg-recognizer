@@ -1,0 +1,17 @@
+{
+  "version": "onnx-e24b6760",
+  "game": "pokemon",
+  "embed_model": "dinov2-small-512",
+  "dataset_size": 300.0,
+  "recall_at_1": 1.0,
+  "recall_at_5": 1.0,
+  "recall_at_10": 1.0,
+  "eval_queries": 1.0,
+  "eval_cards": 1.0,
+  "eval_views": 1.0,
+  "dim": 512.0,
+  "rerank_top_k": 10.0,
+  "rerank_recall_at_1": 1.0,
+  "rerank_recall_at_5": 1.0,
+  "feedback_incorporated": 0.0
+}
