@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# OPT-IN OCR + Qdrant text-search e2e (profile `extras`, headless, verifiable).
+# OPT-IN OCR text-search e2e (profile `extras`, headless, verifiable).
 #
-#   reindex official Pokémon cards into Qdrant -> text search ("Charizard") ->
-#   OCR a generated "Charizard" PNG -> search the OCR'd text. All in-network via
-#   `docker compose exec` (no host ports published for these services).
+#   reindex official Pokémon cards into pgvector -> text search ("Charizard") ->
+#   OCR a generated "Charizard" PNG -> search the OCR'd text.
+#
+# The OCR channel stores its text vectors in Postgres + pgvector (the same store
+# the core recognizer uses — no separate vector DB). Runs in an ISOLATED compose
+# project so its `down -v` can't touch the main stack's volumes (pgdata, models).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .env ] || cp .env.example .env
 
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-tcgocr}"
 DC="docker compose --profile extras"
 
 cleanup() { $DC down -v >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-echo "==> build + up qdrant + ocr (profile extras)"
-$DC up -d --build qdrant ocr
+echo "==> build + up db + ocr (profile extras, project=$COMPOSE_PROJECT_NAME)"
+$DC up -d --build db ocr
 
-# Run python inside the ocr container; it has requests/uvicorn etc. available.
+# Run python inside the ocr container; it has requests/urllib available.
 OCR_PY() { $DC exec -T ocr python -c "$1"; }
 
 echo "==> wait for ocr /health"
@@ -30,7 +34,7 @@ done
 [ "$ok" = 1 ] || { echo "FAIL: ocr not healthy"; exit 1; }
 echo "    ocr healthy"
 
-echo "==> reindex {game: pokemon}"
+echo "==> reindex {game: pokemon} (writes card_text_vectors in pgvector)"
 INDEXED=$(OCR_PY '
 import urllib.request, json
 req = urllib.request.Request("http://localhost:8002/reindex",
@@ -53,17 +57,11 @@ import sys, json
 d = json.load(sys.stdin)
 res = d.get("results", [])
 assert res, "no search results"
-# Real-API run or synthetic fallback both contain Charizard (Base set), so a
-# Charizard hit is expected; fall back to "at least one result" defensively.
 hit = any("charizard" in (r.get("name") or "").lower() for r in res)
 print("    charizard hit:", hit)
-assert res, "no search results"
-sys.exit(0)
 '
 
 echo "==> OCR test: generate white PNG with large 'Charizard' text"
-# Build the PNG inside the container (PIL is installed there) and write it to a
-# path we can POST from the same container.
 OCR_PY '
 from PIL import Image, ImageDraw, ImageFont
 img = Image.new("RGB", (600, 200), "white")
@@ -104,9 +102,8 @@ txt = (d.get("ocr_text") or "")
 assert "charizard" in txt.lower(), "ocr_text missing Charizard: %r" % txt
 res = d.get("results", [])
 assert res, "ocr search returned no results"
-top = (res[0].get("name") or "")
 print("    ocr_text:", repr(txt.strip()))
-print("    top result:", top)
+print("    top result:", (res[0].get("name") or ""))
 '
 
-echo "QDRANT OCR E2E OK"
+echo "OCR (pgvector) E2E OK"

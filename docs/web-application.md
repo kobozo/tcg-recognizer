@@ -295,8 +295,9 @@ under a random UUID filename, then calls the recognition pipeline:
   timeout). On failure it removes the orphaned upload and returns `502` rather than
   an unhandled `500`. It also **defensively validates** the `unknown` response
   shape (`name.value`, `name.conf`, `model_version`) before trusting it.
-- Optional OCR + Qdrant text channel and optional VLM disambiguation (only when
-  confidence `< 0.6`) fold in extra candidates — both opt-in and best-effort.
+- Optional OCR text channel (Postgres + pgvector) and optional VLM
+  disambiguation (only when confidence `< 0.6`) fold in extra candidates — both
+  opt-in and best-effort.
 - `enrichCard` adds market data (best-effort, never blocks).
 
 Finally it stores a `Scan` row with `{ ...predictions, enrichment }` in the JSON

@@ -309,7 +309,7 @@ retrain + `docker compose up` on this host) — see the honesty section.
 **What.** Every service is a Docker image, orchestrated by `docker-compose.yml`:
 web (Next.js), inference, OCR, sentinel, trainer, plus pinned infrastructure
 images — `pgvector/pgvector:pg16` (DB), `ghcr.io/mlflow/mlflow:v2.22.0`,
-`caddy:2-alpine`, `qdrant/qdrant:v1.18.2`, `ollama/ollama`.
+`caddy:2-alpine`, `ollama/ollama`.
 
 Pinning is applied **where it matters for reproducibility**: the trainer
 (`services/trainer/Dockerfile` + `requirements.txt`) pins

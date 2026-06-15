@@ -106,24 +106,18 @@ services:
       mlflow:
         condition: service_started
 
-  # --- OPT-IN: OCR + Qdrant text-search subsystem (profile `extras`) ---
-  # An extra recognition channel: OCR cards -> text -> vector -> Qdrant search.
-  # Gated behind `extras` so the default `docker compose up` and CI are unchanged.
-  qdrant:
-    image: qdrant/qdrant:v1.18.2
-    profiles: ["extras"]
-    volumes:
-      - qdrant_storage:/qdrant/storage
-    restart: unless-stopped
-
+  # --- OPT-IN: OCR text-search subsystem (profile `extras`) ---
+  # An extra recognition channel: OCR cards -> text -> vector -> pgvector search.
+  # Uses the SAME Postgres+pgvector store as the core recognizer (no separate
+  # vector DB). Gated behind `extras` so the default `docker compose up` and CI
+  # are unchanged.
   ocr:
     build: ./services/ocr
     profiles: ["extras"]
     env_file: .env
-    environment:
-      QDRANT_URL: http://qdrant:6333
     depends_on:
-      - qdrant
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   # --- OPT-IN: local LLM serving for the collection assistant (profile `llm`) ---
@@ -145,5 +139,4 @@ volumes:
   models:
   uploads:
   mlflow_data:
-  qdrant_storage:
   ollama_models:

@@ -1,51 +1,43 @@
-"""OCR + Qdrant text-search subsystem (opt-in `extras` channel).
+"""OCR text-search subsystem (opt-in `extras` channel) — backed by pgvector.
 
 OCRs cards into text, vectorizes that text with a deterministic, model-free
-character/token n-gram hashing embedder, and stores/searches it in Qdrant. It
-is an *extra* candidate channel for the recognition flywheel, CPU-only, and is
-gated behind the Docker Compose `extras` profile so the default stack is
-untouched.
+character/token n-gram hashing embedder, and stores/searches it in
+**PostgreSQL + pgvector** — the same vector store the core recognizer uses (no
+separate vector database). It is an *extra* candidate channel for the
+recognition flywheel, CPU-only, and gated behind the Docker Compose `extras`
+profile so the default stack is untouched.
 
-Every Qdrant / network call is defensive: the service stays up (returning empty
-results) even if Qdrant is briefly unavailable or an image is malformed.
+Every DB / network call is defensive: the service stays up (returning empty
+results) even if Postgres is briefly unavailable or an image is malformed.
 """
 from __future__ import annotations
 
 import io
 import os
 import re
-import uuid
 from typing import Any
 
 import numpy as np
 import requests
 from fastapi import FastAPI, File, Form, Request, UploadFile
 
-# Qdrant client + models are imported defensively so the module still imports
-# (e.g. for `import app.main`) even if the package layout shifts.
+# psycopg2 is imported defensively so the module still imports even if the
+# driver is missing (the channel then simply returns empty results).
 try:
-    from qdrant_client import QdrantClient
-    from qdrant_client.http import models as qmodels
+    import psycopg2
 except Exception:  # pragma: no cover - defensive import
-    QdrantClient = None  # type: ignore
-    qmodels = None  # type: ignore
+    psycopg2 = None  # type: ignore
 
 # ----------------------------------------------------------------------------
 # Config
 # ----------------------------------------------------------------------------
-QDRANT_URL = os.environ.get("QDRANT_URL", "http://qdrant:6333")
-COLLECTION = "cards_text"
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+TABLE = "card_text_vectors"
 VECTOR_SIZE = 256
 POKEMON_API = "https://api.pokemontcg.io/v2/cards"
 POKEMON_API_KEY = os.environ.get("POKEMON_TCG_API_KEY", "").strip()
 
-# Stable namespace so the same (game, card_id) always maps to the same point id;
-# re-running /reindex upserts in place rather than duplicating.
-_NS = uuid.UUID("6f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8")
-
-app = FastAPI(title="tcg-ocr", version="1.0.0")
-
-_client: "QdrantClient | None" = None
+app = FastAPI(title="tcg-ocr", version="2.0.0")
 
 
 # ----------------------------------------------------------------------------
@@ -97,88 +89,68 @@ def text_embed(text: str) -> list[float]:
 
 
 # ----------------------------------------------------------------------------
-# Qdrant helpers (all defensive)
+# pgvector storage (all defensive)
 # ----------------------------------------------------------------------------
-def get_client() -> "QdrantClient | None":
-    global _client
-    if QdrantClient is None:
+def _vec_literal(vec: list[float]) -> str:
+    return "[" + ",".join(repr(float(x)) for x in vec) + "]"
+
+
+def _connect():
+    """Open a Postgres connection, or None on any failure."""
+    if psycopg2 is None or not DATABASE_URL:
         return None
-    if _client is None:
-        try:
-            _client = QdrantClient(url=QDRANT_URL, timeout=10.0)
-        except Exception:
-            _client = None
-    return _client
+    try:
+        return psycopg2.connect(DATABASE_URL, connect_timeout=5)
+    except Exception:
+        return None
 
 
-def ensure_collection() -> bool:
-    """Create the `cards_text` collection on first use. Returns success."""
-    client = get_client()
-    if client is None or qmodels is None:
+def ensure_schema() -> bool:
+    """Create the pgvector extension + text-vector table on first use."""
+    conn = _connect()
+    if conn is None:
         return False
     try:
-        client.get_collection(COLLECTION)
+        with conn, conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            cur.execute(
+                f"CREATE TABLE IF NOT EXISTS {TABLE} ("
+                "id text PRIMARY KEY, game text NOT NULL, card_id text, "
+                "name text, set_name text, number text, "
+                f"embedding vector({VECTOR_SIZE}));"
+            )
+            cur.execute(f"CREATE INDEX IF NOT EXISTS {TABLE}_game_idx ON {TABLE}(game);")
         return True
     except Exception:
-        pass
-    try:
-        client.create_collection(
-            collection_name=COLLECTION,
-            vectors_config=qmodels.VectorParams(
-                size=VECTOR_SIZE, distance=qmodels.Distance.COSINE
-            ),
-        )
-        return True
-    except Exception:
-        # Possibly a race where another worker created it; treat as present if
-        # it now exists.
-        try:
-            client.get_collection(COLLECTION)
-            return True
-        except Exception:
-            return False
-
-
-def point_id(game: str, card_id: str) -> str:
-    return str(uuid.uuid5(_NS, f"{game}:{card_id}"))
+        return False
+    finally:
+        conn.close()
 
 
 def _search(query: str, game: str, limit: int) -> list[dict[str, Any]]:
-    client = get_client()
-    if client is None or qmodels is None:
+    if not ensure_schema():
         return []
-    if not ensure_collection():
+    conn = _connect()
+    if conn is None:
         return []
+    lit = _vec_literal(text_embed(query))
     try:
-        flt = qmodels.Filter(
-            must=[
-                qmodels.FieldCondition(
-                    key="game", match=qmodels.MatchValue(value=game)
-                )
-            ]
-        )
-        response = client.query_points(
-            collection_name=COLLECTION,
-            query=text_embed(query),
-            query_filter=flt,
-            limit=limit,
-            with_payload=True,
-        )
-        hits = response.points
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT name, set_name, number, 1 - (embedding <=> %s::vector) AS score "
+                f"FROM {TABLE} WHERE game = %s "
+                "ORDER BY embedding <=> %s::vector LIMIT %s;",
+                (lit, game, lit, int(limit)),
+            )
+            rows = cur.fetchall()
     except Exception:
         return []
-    out: list[dict[str, Any]] = []
-    for h in hits:
-        p = h.payload or {}
-        out.append(
-            {
-                "name": p.get("name"),
-                "set": p.get("set"),
-                "number": p.get("number"),
-                "score": float(h.score),
-            }
-        )
-    return out
+    finally:
+        conn.close()
+    return [
+        {"name": r[0], "set": r[1], "number": r[2], "score": float(r[3])}
+        for r in rows
+    ]
 
 
 # ----------------------------------------------------------------------------
@@ -238,35 +210,39 @@ def _fetch_cards(game: str) -> list[dict[str, Any]]:
 
 def _reindex(game: str) -> int:
     cards = _fetch_cards(game)
-    client = get_client()
-    if client is None or qmodels is None:
+    if not cards or not ensure_schema():
         return 0
-    if not ensure_collection():
+    conn = _connect()
+    if conn is None:
         return 0
-
-    points = []
-    for c in cards:
-        doc = f"{c['name']} {c['number']} {c['set']} {c['types']}".strip()
-        points.append(
-            qmodels.PointStruct(
-                id=point_id(game, c["id"]),
-                vector=text_embed(doc),
-                payload={
-                    "game": game,
-                    "card_id": c["id"],
-                    "name": c["name"],
-                    "set": c["set"],
-                    "number": c["number"],
-                },
-            )
-        )
-    if not points:
-        return 0
+    n = 0
     try:
-        client.upsert(collection_name=COLLECTION, points=points, wait=True)
+        with conn, conn.cursor() as cur:
+            for c in cards:
+                doc = f"{c['name']} {c['number']} {c['set']} {c['types']}".strip()
+                cur.execute(
+                    f"INSERT INTO {TABLE} "
+                    "(id, game, card_id, name, set_name, number, embedding) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s::vector) "
+                    "ON CONFLICT (id) DO UPDATE SET "
+                    "embedding=EXCLUDED.embedding, name=EXCLUDED.name, "
+                    "set_name=EXCLUDED.set_name, number=EXCLUDED.number;",
+                    (
+                        f"{game}:{c['id']}",
+                        game,
+                        c["id"],
+                        c["name"],
+                        c["set"],
+                        c["number"],
+                        _vec_literal(text_embed(doc)),
+                    ),
+                )
+                n += 1
     except Exception:
         return 0
-    return len(points)
+    finally:
+        conn.close()
+    return n
 
 
 # ----------------------------------------------------------------------------
@@ -288,8 +264,7 @@ async def reindex(request: Request, game: str | None = None) -> dict[str, int]:
         except Exception:
             g = None
     g = (g or "pokemon").strip() or "pokemon"
-    n = _reindex(g)
-    return {"indexed": n}
+    return {"indexed": _reindex(g)}
 
 
 @app.get("/search")

@@ -182,18 +182,25 @@ The user-facing app lives in `apps/web` and is a single Next.js application.
 
 - **What it is** — a Postgres extension adding a `vector` column type and
   nearest-neighbour search operators (`<=>` cosine distance, with ANN indexing).
-- **Where we use it** — the `card_vectors` table queried in
-  `services/inference/app/main.py`:
-  `ORDER BY embedding <=> %s::vector LIMIT %s`, with similarity computed as
-  `1 - (embedding <=> %s::vector)`. The table stores a `vector(512)` per card,
-  built by the trainer; the Compose comment on the `db` service notes pgvector =
-  "Postgres 16 + the `vector` extension (ANN index for recognition)."
+  It backs **both** vector channels in the system: the core visual recognizer and
+  the optional OCR text channel.
+- **Where we use it** — two tables, both queried with the same cosine operator:
+  the visual index `card_vectors` in `services/inference/app/main.py`
+  (`ORDER BY embedding <=> %s::vector LIMIT %s`, similarity `1 - (embedding <=>
+  %s::vector)`, `vector(512)` per card, built by the trainer); **and** the OCR
+  text channel's `card_text_vectors` in `services/ocr/app/main.py`
+  (`vector(256)` per card, same `<=>` query, filtered by `game`). The Compose
+  comment on the `db` service notes pgvector = "Postgres 16 + the `vector`
+  extension (ANN index for recognition)."
 - **Why we chose it** — this is the heart of recognition: a card photo becomes a
   512-dim embedding, and we need the nearest reference card. pgvector lets us do
   that **inside the database we already run**, in one SQL statement, with the
   card's relational metadata (name, set, number, rarity, image URL) joined on the
   same row — no second system to deploy, sync, or keep consistent. For a
-  single-box deployment this is decisive: zero extra infrastructure.
+  single-box deployment this is decisive: zero extra infrastructure. The same
+  reasoning extends to the OCR text channel: rather than stand up a second store
+  for its 256-dim text vectors, we reuse pgvector (`card_text_vectors`), so the
+  whole system has **one vector technology and one datastore**.
 - **Alternatives considered & trade-offs** — a **dedicated vector DB** (Qdrant,
   Milvus, FAISS, Pinecone) offers more advanced indexing and scales further. But
   it means (a) another service to run on the one box, and (b) keeping the vectors
@@ -201,39 +208,27 @@ The user-facing app lives in `apps/web` and is a single Next.js application.
   cards) pgvector's recall and latency are more than sufficient, and co-locating
   vectors with metadata is a real simplification. The trade-off is that we give
   up the fancier indexing/sharding of a specialised engine — which we do not
-  need. (We *do* run Qdrant, but for a different channel — see below — precisely
-  because that channel's needs differ.)
+  need.
 
-### Qdrant — *why we use it specifically for the OCR text channel*
+### Qdrant — *evaluated for the OCR text channel, then consolidated away*
 
 - **What it is** — a dedicated, standalone vector search database.
-- **Where we use it** — the optional `qdrant` service (Compose profile `extras`,
-  `qdrant/qdrant:v1.18.2`), driven by `services/ocr/app/main.py` via
-  `qdrant-client`. It stores a `cards_text` collection of text embeddings and is
-  queried with `query_points` (cosine), filtered by `game`.
-- **Why we chose it (for *this* channel)** — the OCR channel is a *separate,
-  opt-in recognition path*: it reads a card's printed text with OCR, turns that
-  text into a vector, and looks it up. It is deliberately **decoupled** from the
-  primary visual-embedding index for two reasons. First, isolation: it is gated
-  behind the `extras` profile so the default stack and CI never depend on it, and
-  it should not touch the production `card_vectors` table that the main visual
-  pipeline relies on. Second, fit: this is a self-contained Python micro-service
-  that owns its own collection lifecycle (`ensure_collection`, `reindex`,
-  `search`); Qdrant gives it a clean client-driven API (create collection,
-  upsert with payload, filtered query) without needing Postgres credentials or a
-  schema migration. Using a different store here is the point — it keeps the
-  experimental channel quarantined from the core datastore.
-- **Alternatives considered & trade-offs** — we *could* have added a second
-  pgvector table for the text vectors. We didn't, because the OCR channel is an
-  optional experiment we wanted fully self-contained and removable (drop the
-  profile and it's gone), and because it doubles as a demonstration that we can
-  integrate a *dedicated* vector DB where it fits. The trade-off is running an
-  extra container — acceptable since it is opt-in.
-
-> **Why two vector stores?** Not redundancy — *separation of concerns*. pgvector
-> serves the always-on **visual** recognition index, co-located with card
-> metadata. Qdrant serves the optional, quarantined **OCR-text** channel. Each
-> store is matched to its channel's coupling and lifecycle needs.
+- **Status: not used.** An earlier iteration ran the OCR text channel on a
+  separate Qdrant service. We evaluated keeping a dedicated vector DB for that
+  channel and **deliberately decided against it**: pgvector and Qdrant were two
+  technologies doing the *same job* (vector similarity search), and the core
+  already runs Postgres + pgvector. So we **consolidated the OCR text vectors
+  onto pgvector** (the `card_text_vectors` table in `services/ocr/app/main.py`,
+  queried with the same cosine `<=>` operator as `card_vectors`), and removed
+  Qdrant from the project entirely — one fewer service, one fewer client
+  dependency (`qdrant-client`), and one fewer named volume.
+- **Why consolidate** — at this project's scale a second vector engine bought us
+  nothing the core's pgvector didn't already provide, while costing an extra
+  container, an extra dependency, and a second store to keep consistent. Reusing
+  the database we already operate is the simpler, leaner choice and keeps the
+  whole stack on a single vector technology. The OCR channel remains fully
+  **opt-in** (Compose profile `extras`) and defensive (empty results, never 500)
+  — consolidating its storage onto pgvector did not change that isolation.
 
 ---
 
@@ -681,13 +676,13 @@ channel) behind a **provider router** that can use a cloud model or a local one.
 - **What it is** — multi-container orchestration from one `docker-compose.yml`.
 - **Where we use it** — `docker-compose.yml` wires `proxy`, `web`, `inference`,
   `db`, `sentinel`, `mlflow`, and (profile-gated) `trainer` (`tools`),
-  `qdrant`+`ocr` (`extras`), and `ollama` (`llm`), with health-checked
+  `ocr` (`extras`), and `ollama` (`llm`), with health-checked
   `depends_on` and named volumes.
 - **Why we chose it** — the whole system must come up with **one command** on the
   one box, with correct start-order (web waits for db+inference; proxy waits for
   web). **Profiles** are the key design choice: the *default* `docker compose up`
   brings only the core (so CI/smoke stay fast and deterministic), while the
-  optional, heavier channels (OCR/Qdrant, local LLM, the one-shot trainer) are
+  optional, heavier channels (the OCR text channel, local LLM, the one-shot trainer) are
   **opt-in** and never burden the default path. That keeps the demo simple and
   the optional experiments quarantined.
 - **Alternatives considered & trade-offs** — Kubernetes is vastly overk/ill-fit
@@ -722,7 +717,7 @@ channel) behind a **provider router** that can use a cloud model or a local one.
   production setup**: one `docker compose up` on one CPU box, bound to the LAN IP,
   is the whole deployment.
 - **Where we see it** — services bind `0.0.0.0`/the LAN IP; HTTPS via Caddy's
-  internal CA; all data stores (Postgres, MLflow's SQLite, Qdrant, Ollama models)
+  internal CA; all data stores (Postgres, MLflow's SQLite, Ollama models)
   are local volumes; LLM and learned-CV features all have offline/no-key
   fallbacks; CI even boots the *same* Compose stack in its smoke job.
 - **Why we chose it** — there is no cloud target; the deliverable must run, in
@@ -759,8 +754,9 @@ CPU-only box.**
   *inside the app's own database* (co-located with metadata), with the option of
   a learned DINOv2 embedding (matched server-and-browser via ONNX/transformers.js)
   and an ORB+RANSAC geometric re-rank that exploits the fact that cards are flat
-  rigid objects. Qdrant + Tesseract form a *separate, quarantined* OCR channel —
-  separation of concerns, not redundancy.
+  rigid objects. Tesseract + a model-free text embedder form a *separate, opt-in*
+  OCR channel that reuses the same pgvector store (`card_text_vectors`) — one
+  vector technology for the whole system, not two.
 - **MLOps rigour** is real, not decorative: MLflow tracks every run, DVC versions
   data and defines a reproducible YAML pipeline that triggers an actual training,
   and GitHub Actions (plus CodeRabbit) gate every change — including a smoke job

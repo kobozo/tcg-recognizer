@@ -12,9 +12,9 @@ export type CardPredictions = {
   card_number: Prediction;
   model_version: string;
   /**
-   * Opt-in OCR + Qdrant text channel: the OCR'd text and the source tag for the
-   * extra candidates folded into `name.candidates`. Present only when the
-   * `extras` OCR channel is enabled (OCR_QDRANT).
+   * Opt-in OCR text channel (pgvector-backed): the OCR'd text and the source tag
+   * for the extra candidates folded into `name.candidates`. Present only when the
+   * `extras` OCR channel is enabled (OCR_ENABLED).
    */
   ocr?: { text: string; source: string };
   /**

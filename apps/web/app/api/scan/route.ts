@@ -91,7 +91,7 @@ export async function POST(req: Request) {
       ocr.candidates,
       predictions.name.value,
     );
-    predictions.ocr = { text: ocr.text, source: "qdrant" };
+    predictions.ocr = { text: ocr.text, source: "ocr" };
   }
 
   // Opt-in VLM-assisted disambiguation (gated by VLM_ASSIST, off by default). On
