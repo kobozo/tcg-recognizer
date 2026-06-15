@@ -91,16 +91,24 @@ export default async function CollectionPage() {
       enrichment?: Enrichment | null;
     };
     const setName = stored?.set?.value || "Unknown set";
-    const key = `${r.game}:${setName}`;
+    // Key by the normalized set name so name variants land in one bucket and
+    // match the totals lookup below (which also normalizes).
+    const key = `${r.game}:${normalizeSetName(setName) || "unknown"}`;
     const cur =
       ownedByGameSet.get(key) ??
       { game: r.game, set: setName, value: new Map<string, number>(), seen: new Set<string>() };
-    const identity = `${stored?.name?.value ?? ""}|${stored?.card_number?.value ?? ""}`
-      .trim()
-      .toLowerCase();
+    // Distinct-card identity; cards missing a name+number can't be de-duplicated,
+    // so fall back to the scan id (each counts once) instead of collapsing all
+    // unknowns together.
+    const nameId = stored?.name?.value?.trim().toLowerCase();
+    const numberId = stored?.card_number?.value?.trim().toLowerCase();
+    const identity = nameId && numberId ? `${nameId}|${numberId}` : `scan:${r.id}`;
+    const isNewCard = !cur.seen.has(identity);
     cur.seen.add(identity);
+    // Only count a card's value once (re-scans of the same card must not inflate
+    // the set value).
     const price = stored?.enrichment?.price;
-    if (typeof price === "number" && price > 0) {
+    if (isNewCard && typeof price === "number" && price > 0) {
       const currency = stored?.enrichment?.currency || "USD";
       cur.value.set(currency, (cur.value.get(currency) ?? 0) + price);
     }
@@ -119,7 +127,9 @@ export default async function CollectionPage() {
         total: totalsByGameSet.get(`${e.game}:${normalizeSetName(e.set)}`) ?? 0,
       };
     })
-    .sort((a, b) => b.valueTotal - a.valueTotal || b.owned - a.owned);
+    // Sort by distinct cards owned first (currency-agnostic); valueTotal is a
+    // cross-currency sum used only as a tiebreaker.
+    .sort((a, b) => b.owned - a.owned || b.valueTotal - a.valueTotal);
 
   const distinctSets = ownedByGameSet.size;
   const distinctGames = gamesPresent.length;

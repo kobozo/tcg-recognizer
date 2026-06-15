@@ -29,6 +29,10 @@ jobs:
       - run: bash scripts/smoke.sh
   dupe-guard:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - run: bash scripts/check-dupes.sh

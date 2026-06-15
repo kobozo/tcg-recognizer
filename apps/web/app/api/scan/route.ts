@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { auth } from "@/lib/auth";
@@ -66,10 +66,18 @@ export async function POST(req: Request) {
   try {
     predictions = (await predictCard(image, game, embedding)) as CardPredictions;
   } catch {
+    await rm(imagePath, { force: true }); // don't leave an orphaned upload
     return NextResponse.json({ error: "Recognition service unavailable" }, { status: 502 });
   }
-  // The response is cast from `unknown`; guard its shape before dereferencing.
-  if (!predictions?.name) {
+  // The response is cast from `unknown`; guard the fields later code dereferences
+  // (name.value, name.conf, model_version) before using them.
+  if (
+    !predictions?.name ||
+    typeof predictions.name.value !== "string" ||
+    typeof predictions.name.conf !== "number" ||
+    typeof predictions.model_version !== "string"
+  ) {
+    await rm(imagePath, { force: true });
     return NextResponse.json({ error: "Recognition service unavailable" }, { status: 502 });
   }
 
