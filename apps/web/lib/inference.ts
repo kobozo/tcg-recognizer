@@ -12,7 +12,11 @@ export async function predictCard(
   if (embedding && embedding.length > 0) {
     form.append("embedding", JSON.stringify(embedding));
   }
-  const r = await fetch(`${INFERENCE_URL}/predict`, { method: "POST", body: form });
+  const r = await fetch(`${INFERENCE_URL}/predict`, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(15000),
+  });
   if (!r.ok) throw new Error(`inference ${r.status}`);
   return r.json();
 }

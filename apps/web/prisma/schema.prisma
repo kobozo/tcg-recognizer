@@ -31,15 +31,17 @@ model Session {
 }
 
 model Scan {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
-  game         String   @default("pokemon")
+  game         String    @default("pokemon")
   imagePath    String
   predictions  Json
   modelVersion String
-  createdAt    DateTime @default(now())
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   feedback     Feedback?
+
+  @@index([userId, createdAt])
 }
 
 /// Human-in-the-loop label: the user confirms or corrects a scan's recognition.
@@ -54,6 +56,8 @@ model Feedback {
   correct       Boolean  @default(false)
   createdAt     DateTime @default(now())
   scan          Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model ModelVersion {

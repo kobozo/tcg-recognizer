@@ -161,12 +161,12 @@ def embed(pil_image) -> list[float]:
     augmentation-invariant space.
     """
     if os.environ.get("EMBEDDER", "classical").strip().lower() == "onnx":
-        # Apply the head ONLY when onnx genuinely produced the embedding — if
-        # the onnx model is unavailable, _embed_onnx() falls back to the
-        # classical descriptor, which the DINOv2-trained head must not touch.
-        onnx_ok = _ensure_onnx() is not None
-        vec = _embed_onnx(pil_image)
-        if onnx_ok:
+        # Apply the head ONLY when onnx genuinely produced this embedding. A
+        # per-call inference failure inside _embed_onnx_raw falls back to the
+        # classical descriptor (used_onnx=False); the DINOv2-trained head must
+        # not touch a classical vector.
+        vec, used_onnx = _embed_onnx_raw(pil_image)
+        if used_onnx:
             head = _load_head()
             if head is not None:
                 try:
@@ -492,15 +492,18 @@ def _fit_512(vec: np.ndarray) -> list[float]:
     return [float(x) for x in vec.astype(np.float32).tolist()]
 
 
-def _embed_onnx(pil_image) -> list[float]:
+def _embed_onnx_raw(pil_image) -> tuple[list[float], bool]:
     """Learned DINOv2-small embedding (CLS token), fit to 512 dims.
 
-    Falls back to the classical descriptor (never raises) if the model is
-    unavailable or inference fails.
+    Returns ``(vector, used_onnx)``. ``used_onnx`` is True only when the vector
+    actually came from the onnx backend; on any model unavailability or a
+    per-call inference failure it falls back to the classical descriptor
+    (never raises) and returns ``used_onnx=False`` so callers know the
+    DINOv2-trained head must not be applied.
     """
     state = _ensure_onnx()
     if state is None:
-        return _embed_classical(pil_image)
+        return _embed_classical(pil_image), False
     try:
         x = _preprocess_onnx(pil_image, state["preproc"])
         outputs = state["session"].run(None, {state["input_name"]: x})
@@ -511,7 +514,18 @@ def _embed_onnx(pil_image) -> list[float]:
             cls = out[0, :]  # already pooled
         else:
             cls = out.reshape(-1)
-        return _fit_512(cls.astype(np.float32))
+        return _fit_512(cls.astype(np.float32)), True
     except Exception as e:  # noqa: BLE001 - degrade to classical on any error
         print(f"[embed:onnx] inference failed; falling back to classical: {e}", file=sys.stderr)
-        return _embed_classical(pil_image)
+        return _embed_classical(pil_image), False
+
+
+def _embed_onnx(pil_image) -> list[float]:
+    """Thin wrapper returning just the vector (see _embed_onnx_raw).
+
+    Falls back to the classical descriptor (never raises) if the model is
+    unavailable or inference fails. Kept for any caller that only needs the
+    vector and not the backend signal.
+    """
+    vec, _used_onnx = _embed_onnx_raw(pil_image)
+    return vec

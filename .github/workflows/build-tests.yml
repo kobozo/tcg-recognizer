@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/inference/requirements.txt
       - run: cd services/inference && pip install -r requirements.txt && python -m pytest -q
   smoke:
     runs-on: ubuntu-latest
@@ -25,3 +27,12 @@ jobs:
       - uses: actions/checkout@v4
       - run: cp .env.example .env
       - run: bash scripts/smoke.sh
+  dupe-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash scripts/check-dupes.sh

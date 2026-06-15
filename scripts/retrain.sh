@@ -7,12 +7,14 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 mkdir -p logs
-ts="$(date -u +%FT%T%TZ 2>/dev/null || date -u)"
+ts="$(date -u +%FT%TZ 2>/dev/null || date -u)"
 {
   echo "[$ts] retrain start"
-  if docker compose run --rm trainer; then
+  docker compose run --rm trainer
+  rc=$?
+  if [ "$rc" = 0 ]; then
     echo "[$ts] retrain OK"
   else
-    echo "[$ts] retrain FAILED (exit $?)"
+    echo "[$ts] retrain FAILED (exit $rc)"
   fi
 } >> logs/retrain.log 2>&1

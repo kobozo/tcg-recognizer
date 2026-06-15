@@ -16,16 +16,28 @@ export default function FeedbackControl({
   const [mode, setMode] = useState<"idle" | "correcting" | "done">("idle");
   const [custom, setCustom] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function send(payload: { correct?: boolean; correctedName?: string }) {
     setBusy(true);
+    setError(null);
     try {
-      await fetch("/api/feedback", {
+      const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scanId, ...payload }),
       });
+      if (res.status === 401) {
+        setError("Your session expired. Please log in again.");
+        return;
+      }
+      if (!res.ok) {
+        setError("Couldn't save your feedback. Please try again.");
+        return;
+      }
       setMode("done");
+    } catch {
+      setError("Something went wrong. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -88,6 +100,11 @@ export default function FeedbackControl({
             </Button>
           </form>
         </div>
+      )}
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-red-300">
+          {error}
+        </p>
       )}
     </div>
   );

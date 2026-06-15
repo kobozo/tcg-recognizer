@@ -8,6 +8,8 @@ export type ChatMessage = {
 export type ChatOptions = {
   maxTokens?: number;
   temperature?: number;
+  /** Per-request timeout (ms). Guards against hung calls blocking the caller. */
+  timeoutMs?: number;
 };
 
 /**

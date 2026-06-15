@@ -56,8 +56,15 @@ export default function CameraScanner({
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [captured, setCaptured] = useState<{ url: string; blob: Blob } | null>(null);
+  const capturedUrlRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cameraSupported, setCameraSupported] = useState(true);
+
+  // Track the latest object URL in a ref so the unmount cleanup (which closes
+  // over its initial render's state) can always revoke the current one.
+  useEffect(() => {
+    capturedUrlRef.current = captured?.url ?? null;
+  }, [captured]);
 
   useEffect(() => {
     const supported =
@@ -72,7 +79,13 @@ export default function CameraScanner({
     streamRef.current = null;
   }, []);
 
-  useEffect(() => () => stopStream(), [stopStream]);
+  useEffect(
+    () => () => {
+      stopStream();
+      if (capturedUrlRef.current) URL.revokeObjectURL(capturedUrlRef.current);
+    },
+    [stopStream],
+  );
 
   async function startCamera() {
     setError(null);
@@ -114,6 +127,7 @@ export default function CameraScanner({
       (blob) => {
         if (!blob) return;
         stopStream();
+        if (captured) URL.revokeObjectURL(captured.url);
         setCaptured({ url: URL.createObjectURL(blob), blob });
         setPhase("captured");
       },
@@ -139,6 +153,7 @@ export default function CameraScanner({
     }
     stopStream();
     setError(null);
+    if (captured) URL.revokeObjectURL(captured.url);
     setCaptured({ url: URL.createObjectURL(file), blob: file });
     setPhase("captured");
   }
@@ -167,6 +182,8 @@ export default function CameraScanner({
         return;
       }
       const { id } = (await res.json()) as { id: string };
+      URL.revokeObjectURL(captured.url);
+      capturedUrlRef.current = null;
       router.push(`/scan/${id}`);
     } catch {
       setError("Something went wrong. Please try again.");

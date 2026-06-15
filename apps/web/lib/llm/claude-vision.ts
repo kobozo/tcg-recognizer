@@ -4,6 +4,16 @@ import type { VisionOptions, VisionProvider } from "@/lib/llm/types";
 const DEFAULT_MODEL = "claude-opus-4-8";
 const DEFAULT_TIMEOUT_MS = 20_000;
 
+/**
+ * Whether a model accepts the `temperature` parameter. Current Opus 4.6+/4.7/4.8
+ * and Fable families REMOVED sampling params — sending `temperature` returns HTTP
+ * 400. Omit it for any model id starting with `claude-opus-4` or `claude-fable`
+ * (forward-compatible: covers future point releases in those families).
+ */
+function supportsTemperature(model: string): boolean {
+  return !/^claude-(opus-4|fable)/.test(model);
+}
+
 type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
 /**
@@ -50,11 +60,13 @@ export class ClaudeVisionProvider implements VisionProvider {
         }),
     );
 
+    const includeTemperature =
+      opts?.temperature !== undefined && supportsTemperature(this.model);
     const res = await client.messages.create(
       {
         model: this.model,
         max_tokens: opts?.maxTokens ?? 512,
-        ...(opts?.temperature !== undefined ? { temperature: opts.temperature } : {}),
+        ...(includeTemperature ? { temperature: opts.temperature } : {}),
         messages: [{ role: "user", content: [...images, { type: "text", text: prompt }] }],
       },
       { timeout: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS },
