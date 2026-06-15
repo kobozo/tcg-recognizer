@@ -42,6 +42,12 @@ export type GameCardDetail = GameCard & {
   largeImage?: string;
   price?: number;
   currency?: string;
+  /**
+   * Print finishes/variants of THIS exact card (same set + number) — e.g.
+   * Normal, Holofoil, Reverse Holofoil, 1st Edition — with their market price.
+   * Derived from the card's own per-finish pricing (not separate card objects).
+   */
+  variants?: { name: string; price?: number; currency?: string }[];
 };
 
 export interface GameProvider {

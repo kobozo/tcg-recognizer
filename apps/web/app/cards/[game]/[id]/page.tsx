@@ -124,6 +124,29 @@ export default async function CardDetailPage({
           </div>
         </div>
 
+        {/* Finishes & variants of THIS card (same set + number) */}
+        {(card.variants?.length ?? 0) > 0 && (
+          <div className="mt-10">
+            <h2 className="mb-3 text-lg font-semibold">Finishes &amp; variants</h2>
+            <ul className="flex flex-wrap gap-2">
+              {card.variants!.map((v) => (
+                <li
+                  key={v.name}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface/60 px-3 py-1.5 text-sm"
+                >
+                  <span className="font-medium">{v.name}</span>
+                  {typeof v.price === "number" && (
+                    <span className="text-muted">{formatMoney(v.price, v.currency)}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-muted">
+              Print finishes of this exact card · prices from TCGplayer (USD).
+            </p>
+          </div>
+        )}
+
         {/* All versions */}
         <div className="mt-12">
           <div className="mb-4 flex items-center gap-2">

@@ -37,7 +37,13 @@ type FullCard = {
   oracle_text?: string;
   flavor_text?: string;
   artist?: string;
-  prices?: { usd?: string | null; usd_foil?: string | null; eur?: string | null };
+  finishes?: string[];
+  prices?: {
+    usd?: string | null;
+    usd_foil?: string | null;
+    usd_etched?: string | null;
+    eur?: string | null;
+  };
   card_faces?: { image_uris?: { small?: string; normal?: string }; oracle_text?: string }[];
 };
 
@@ -149,7 +155,29 @@ export const magicProvider: GameProvider = {
         if (usd !== undefined) [price, currency] = [usd, "USD"];
         else if (eur !== undefined) [price, currency] = [eur, "EUR"];
       }
+      // Print finishes of this exact card (USD), e.g. Nonfoil / Foil / Etched.
+      const finishPrice: Record<string, string | null | undefined> = {
+        nonfoil: c.prices?.usd,
+        foil: c.prices?.usd_foil,
+        etched: c.prices?.usd_etched,
+      };
+      const finishLabel: Record<string, string> = {
+        nonfoil: "Nonfoil",
+        foil: "Foil",
+        etched: "Etched",
+      };
+      const variants = (c.finishes ?? [])
+        .filter((f) => f in finishLabel)
+        .map((f) => {
+          const n = Number(finishPrice[f]);
+          return {
+            name: finishLabel[f],
+            price: Number.isFinite(n) && n > 0 ? n : undefined,
+            currency: "USD",
+          };
+        });
       return {
+        variants,
         id: c.id,
         name: c.name,
         number: c.collector_number ?? "",
