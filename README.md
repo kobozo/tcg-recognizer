@@ -38,6 +38,21 @@ ml/                datasets + model artifacts (git-ignored)
 docs/              proposal + design specs
 ```
 
+## Data & pipeline versioning (DVC)
+
+The card-image dataset and the training pipeline are versioned with **DVC**
+(MLOps maturity level 1, mirroring the `mlops-course-03` module). The data lives
+in a local DVC remote (out of git); a small pointer (`ml/datasets/pokemon.dvc`),
+`params.yaml`, `dvc.yaml` and the metric `ml/metrics.json` are committed. DVC runs
+inside the trainer container — see **[`docs/dvc.md`](docs/dvc.md)**.
+
+```bash
+bash scripts/dvc.sh init                          # one-time
+bash scripts/dvc.sh add ml/datasets/pokemon       # track the dataset
+bash scripts/dvc.sh repro                          # reproduce the model (real trainer run)
+bash scripts/dvc.sh metrics show                   # recall@1/@5/@10 …
+```
+
 ## Contributing (non-technical + AI welcome)
 
 Add a page under `apps/web/app/demos/<your-slug>/page.tsx` and register it in

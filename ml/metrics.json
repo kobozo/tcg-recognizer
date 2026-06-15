@@ -1,0 +1,14 @@
+{
+  "version": "classical-49fec67c",
+  "game": "pokemon",
+  "embed_model": "classical-color-grad-512",
+  "dataset_size": 300.0,
+  "recall_at_1": 0.4125,
+  "recall_at_5": 0.64,
+  "recall_at_10": 0.715,
+  "eval_queries": 400.0,
+  "eval_cards": 200.0,
+  "eval_views": 2.0,
+  "dim": 512.0,
+  "feedback_incorporated": 0.0
+}

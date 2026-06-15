@@ -22,8 +22,24 @@ venv/
 # ML artifacts & data (versioned via the models volume / dataset manifests, not git)
 ml/models/*
 !ml/models/.gitkeep
+# Dataset: the *data* is DVC-tracked (local remote), NOT git. The small DVC
+# pointer file ml/datasets/pokemon.dvc IS committed so the version is recorded.
+# `dvc add` also writes its own ml/datasets/.gitignore entry for /pokemon; the
+# rules here are kept consistent with that (data ignored, pointer + metric kept).
 ml/datasets/*
 !ml/datasets/.gitkeep
+!ml/datasets/pokemon.dvc
+!ml/datasets/.gitignore
+# DVC metric (sub-project 4): small JSON, committed so the model's eval is in git.
+!ml/metrics.json
+
+# DVC local-filesystem remote (sub-project 4): the actual data blobs live here;
+# never committed to git (that would defeat the purpose of DVC).
+/.dvc-remote/
+# DVC internals: keep .dvc/config (committed) but ignore the local cache + tmp.
+/.dvc/cache
+/.dvc/tmp
+/.dvc/config.local
 
 # Sentinel local state
 services/sentinel/*.sqlite

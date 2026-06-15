@@ -1,0 +1,6 @@
+outs:
+- md5: c70a0f88fb9febb5af1b2eba98c82c29.dir
+  size: 3330939330
+  nfiles: 20308
+  hash: md5
+  path: pokemon
