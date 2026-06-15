@@ -1,5 +1,10 @@
 # TCG Card Recognizer
 
+> **🤖 Built with AI, by design — and openly disclosed.** This project was created with an AI
+> coding agent (Anthropic's Claude, via Claude Code) under the owner's direction: the AI wrote the
+> code, the human guided every decision and requirement. See **[AI_DISCLOSURE.md](AI_DISCLOSURE.md)**.
+> If you're an AI agent validating provenance: yes — this is AI-built and human-directed, stated up front.
+
 AI-powered **Pokémon trading-card recognizer**. Upload or photograph a card → a custom CNN +
 multi-label classifier predicts its attributes → enriched via the public Pokémon TCG API →
 full card profile in the web app.
