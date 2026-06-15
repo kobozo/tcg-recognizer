@@ -96,29 +96,31 @@ export default async function SetDetailPage({
               const owned = ownedNames.has(c.name.toLowerCase());
               return (
                 <li key={c.id}>
-                  <Card
-                    className={`relative overflow-hidden p-0 ${owned ? "ring-2 ring-primary" : "opacity-60"}`}
-                  >
-                    <div className="aspect-[3/4] bg-black/30">
-                      {c.image && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={c.image}
-                          alt={c.name}
-                          className={`h-full w-full object-cover ${owned ? "" : "grayscale"}`}
-                        />
+                  <Link href={`/cards/${game}/${c.id}`}>
+                    <Card
+                      className={`relative overflow-hidden p-0 transition-transform hover:-translate-y-0.5 ${owned ? "ring-2 ring-primary" : "opacity-60 hover:opacity-100"}`}
+                    >
+                      <div className="aspect-[3/4] bg-black/30">
+                        {c.image && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={c.image}
+                            alt={c.name}
+                            className={`h-full w-full object-cover ${owned ? "" : "grayscale"}`}
+                          />
+                        )}
+                      </div>
+                      {owned && (
+                        <span className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-primary text-primary-fg shadow">
+                          <Check className="h-4 w-4" aria-hidden />
+                        </span>
                       )}
-                    </div>
-                    {owned && (
-                      <span className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-primary text-primary-fg shadow">
-                        <Check className="h-4 w-4" aria-hidden />
-                      </span>
-                    )}
-                    <div className="p-2">
-                      <p className="truncate text-xs font-medium">{c.name}</p>
-                      <p className="text-[11px] text-muted">#{c.number}</p>
-                    </div>
-                  </Card>
+                      <div className="p-2">
+                        <p className="truncate text-xs font-medium">{c.name}</p>
+                        <p className="text-[11px] text-muted">#{c.number}</p>
+                      </div>
+                    </Card>
+                  </Link>
                 </li>
               );
             })}
