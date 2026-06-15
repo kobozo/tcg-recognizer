@@ -1,4 +1,4 @@
-import { BadgeCheck, Sparkles } from "lucide-react";
+import { BadgeCheck, Eye, Sparkles } from "lucide-react";
 import ConfidenceBar from "@/components/ConfidenceBar";
 import Badge from "@/components/ui/Badge";
 import { formatMoney } from "@/lib/format";
@@ -77,6 +77,18 @@ export default function CardProfile({ imageSrc, predictions, enrichment }: Props
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {predictions.vlm && predictions.vlm.text && (
+          <div className="rounded-xl border border-sky-400/30 bg-sky-500/10 p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-sky-300">
+              <Eye className="h-4 w-4" aria-hidden /> AI read
+            </p>
+            <p className="mt-1 text-sm text-sky-100">{predictions.vlm.text}</p>
+            <p className="mt-1 text-xs text-sky-300/70">
+              via {predictions.vlm.provider} vision
+            </p>
           </div>
         )}
 

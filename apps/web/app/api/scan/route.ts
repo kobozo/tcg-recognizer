@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { predictCard } from "@/lib/inference";
 import { ocrChannel, mergeOcrCandidates } from "@/lib/ocrChannel";
+import { vlmEnabled, vlmDisambiguate } from "@/lib/vlm";
 import { enrichCard } from "@/lib/enrich";
 import { isGameEnabled } from "@/lib/games";
 import type { CardPredictions } from "@/lib/types";
@@ -73,6 +74,32 @@ export async function POST(req: Request) {
       predictions.name.value,
     );
     predictions.ocr = { text: ocr.text, source: "qdrant" };
+  }
+
+  // Opt-in VLM-assisted disambiguation (gated by VLM_ASSIST, off by default). On
+  // hard cases, a vision-language model reads the card and picks from the
+  // shortlist. Best-effort: never throws and is a no-op when disabled, so the
+  // default scan behavior is unchanged.
+  if (vlmEnabled()) {
+    const candidateNames = [
+      predictions.name.value,
+      ...(predictions.name.candidates ?? []).map((c) => c.value),
+    ].filter((v, i, a) => v && a.indexOf(v) === i);
+    const vlm = await vlmDisambiguate(bytes, candidateNames);
+    if (vlm) {
+      predictions.vlm = vlm;
+      if (vlm.pick) {
+        // Reorder candidates so the VLM's pick is first, and make it the value.
+        const rest = (predictions.name.candidates ?? []).filter(
+          (c) => c.value.trim().toLowerCase() !== vlm.pick!.trim().toLowerCase(),
+        );
+        const picked = (predictions.name.candidates ?? []).find(
+          (c) => c.value.trim().toLowerCase() === vlm.pick!.trim().toLowerCase(),
+        ) ?? { value: vlm.pick, conf: predictions.name.conf };
+        predictions.name.candidates = [picked, ...rest];
+        predictions.name.value = vlm.pick;
+      }
+    }
   }
 
   const enrichment = await enrichCard(predictions.name.value, game);
