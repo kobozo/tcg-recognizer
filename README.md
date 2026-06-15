@@ -126,6 +126,39 @@ docker compose exec ollama ollama pull llava:7b    # pull the vision model
 Env lives in `.env.example`: `VLM_ASSIST=` (off), `VLM_PROVIDER=auto`,
 `VLM_MODEL=claude-opus-4-8`, `OLLAMA_VISION_MODEL=llava:7b`.
 
+## Evaluation rigor & responsible-AI docs
+
+- **[`docs/MODEL_CARD.md`](docs/MODEL_CARD.md)** — model card for the recognition
+  system (frozen DINOv2 + learned head + geometric re-rank + optional VLM/OCR):
+  intended use, training data, metrics, limitations, ethics, and the feedback
+  flywheel.
+- **[`docs/DATA_CARD.md`](docs/DATA_CARD.md)** — data card for the ~20.3k-card
+  Pokémon TCG dataset: source, licensing/IP note, manifest schema, preprocessing
+  and splits.
+- **Held-out-CARD recognition eval** (`scripts/eval-heldout.sh`) — the honest
+  generalization test. Using `SAMPLE_OFFSET` it indexes + evaluates a card range
+  **disjoint** from the learned head's training set (cards the head never saw)
+  and prints recall@1/@5/@10 **with vs without** the head. `SAMPLE_OFFSET`
+  defaults to 0 in the trainer (existing behaviour unchanged); keep
+  `HEAD_TRAIN_CARDS < SAMPLE_OFFSET` so the eval cards are truly unseen.
+
+  ```bash
+  bash scripts/eval-heldout.sh                                  # defaults: offset 4000, 1500 cards
+  SAMPLE_OFFSET=4000 SAMPLE_SIZE=1500 RERANK_TOP_K=10 bash scripts/eval-heldout.sh
+  ```
+
+- **Assistant groundedness (LLM-as-judge)** (`scripts/eval-assistant.sh`) — scores
+  the collection assistant's answers 1..5 for groundedness in the provided
+  context (`apps/web/lib/eval/judge.ts`) over hand-written fixtures, asserting
+  grounded answers outscore hallucinated ones — a hallucination check with no
+  human in the loop. Opt-in (needs Claude or local Ollama).
+
+  ```bash
+  docker compose --profile llm up -d ollama && docker compose exec ollama ollama pull llama3.2:1b
+  bash scripts/eval-assistant.sh                 # local Ollama (default)
+  LLM_PROVIDER=claude bash scripts/eval-assistant.sh   # Claude (needs ANTHROPIC_API_KEY)
+  ```
+
 ## Contributing (non-technical + AI welcome)
 
 Add a page under `apps/web/app/demos/<your-slug>/page.tsx` and register it in

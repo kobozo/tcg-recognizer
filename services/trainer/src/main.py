@@ -41,7 +41,13 @@ def load_cfg() -> dict:
     with open(CONFIG) as f:
         cfg = yaml.safe_load(f)
     # Env overrides for quick baseline sweeps (SAMPLE_SIZE, EVAL_CARDS, ...).
-    for key in ("game", "sample_size", "eval_cards", "eval_views", "eval_seed", "embed_dim", "rerank_top_k"):
+    # SAMPLE_OFFSET (default 0) skips the first N manifest cards before taking
+    # SAMPLE_SIZE, enabling a held-out-card eval over a range disjoint from the
+    # head's training set (scripts/eval-heldout.sh). Default 0 == unchanged.
+    for key in (
+        "game", "sample_size", "sample_offset", "eval_cards", "eval_views",
+        "eval_seed", "embed_dim", "rerank_top_k",
+    ):
         env = os.environ.get(key.upper())
         if env is not None and env != "":
             cfg[key] = env if key == "sample_size" and env == "all" else (
