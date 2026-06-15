@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import CardProfile from "@/components/CardProfile";
 import FeedbackControl from "@/components/FeedbackControl";
+import DeleteScanButton from "@/components/DeleteScanButton";
 import Container from "@/components/ui/Container";
 import { buttonVariants } from "@/components/ui/Button";
 import type { CardPredictions, Enrichment } from "@/lib/types";
@@ -53,6 +54,7 @@ export default async function ScanResultPage({
             <Link href="/scan" className={buttonVariants({ variant: "primary", size: "sm" })}>
               <Camera className="h-4 w-4" aria-hidden /> Add another
             </Link>
+            <DeleteScanButton scanId={scan.id} />
           </div>
         </div>
         <CardProfile
