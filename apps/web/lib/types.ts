@@ -10,6 +10,9 @@ export type CardPredictions = {
   set: Prediction;
   rarity: Prediction;
   card_number: Prediction;
+  /** The exact recognized card's source id (e.g. "dp3-3"); used to enrich the
+   *  precise card (HP/attacks/price) rather than guessing by name. */
+  card_id?: string;
   model_version: string;
   /**
    * Opt-in OCR text channel (pgvector-backed): the OCR'd text and the source tag

@@ -123,7 +123,8 @@ export async function POST(req: Request) {
     }
   }
 
-  const enrichment = await enrichCard(predictions.name.value, game);
+  // Enrich the EXACT recognized card by id (correct HP/attacks/price), not by name.
+  const enrichment = await enrichCard(predictions.name.value, game, predictions.card_id);
 
   const scan = await db.scan.create({
     data: {
