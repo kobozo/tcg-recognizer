@@ -17,6 +17,15 @@ export type CardPredictions = {
    * `extras` OCR channel is enabled (OCR_QDRANT).
    */
   ocr?: { text: string; source: string };
+  /**
+   * Opt-in VLM-assisted disambiguation: when the recognizer is uncertain, a
+   * vision-language model reads the card and picks from the shortlist. `pick` is
+   * a candidate name (or null when the read wasn't in the list), `text` is the
+   * card text the VLM read (for explainability), `provider` is the backend used.
+   * Present only when the VLM channel is enabled (VLM_ASSIST) and returned a
+   * reading.
+   */
+  vlm?: { pick: string | null; text: string; provider: string };
 };
 
 export type Enrichment = {

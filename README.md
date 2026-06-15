@@ -86,6 +86,46 @@ docker compose exec ollama ollama pull llama3.2:1b   # pull the model (matches O
 Env lives in `.env.example`: `LLM_PROVIDER=auto`, `OLLAMA_URL=http://ollama:11434`,
 `OLLAMA_MODEL=llama3.2:1b` (plus the existing `ANTHROPIC_API_KEY` / `ASSISTANT_MODEL`).
 
+## VLM-assisted recognition
+
+When the recognizer is **uncertain**, the scan flow can ask a **vision-language
+model** to look at the photo, **read the card's printed text** (name / number /
+HP), and **pick the right card from the shortlist** — fusing classical CV with a
+VLM for accuracy on hard cases, plus an "AI read" explainability note on the
+result page. It reuses the same provider abstraction as the assistant and works
+with **Claude vision** or a **local Ollama vision model**. Off by default and
+fully CI-safe: with `VLM_ASSIST` unset the scan path is byte-identical to before.
+
+- **Vision providers** (`lib/llm/claude-vision.ts`, `lib/llm/ollama-vision.ts`)
+  implement a `VisionProvider` capability (`vision(prompt, imagesB64, opts)`).
+  Claude sends base64 image content blocks via `@anthropic-ai/sdk`; Ollama posts
+  to the native `POST /api/chat` with `images:[…]` (short timeout → fast fail).
+- **Vision router** (`lib/llm/vision-router.ts`, `chatVisionRouted`) mirrors the
+  text router: `VLM_PROVIDER=claude|ollama|auto` (default `auto` prefers Claude
+  when keyed else the local vision model, with graceful fallback;
+  `NoProviderError` when neither is usable).
+- **Disambiguation** (`lib/vlm.ts`, `vlmDisambiguate`) base64-encodes the image,
+  prompts for strict JSON, parses it robustly (code fences / prose tolerated),
+  and **constrains the pick to the shortlist** (case-insensitive). It is gated by
+  `VLM_ASSIST` and **never throws** — returns `null` on disabled / unconfigured /
+  timeout / bad output, so a scan never breaks or slows down because of it.
+- **Scan wiring** (`app/api/scan/route.ts`): after predictions (and the OCR
+  fold), when enabled it reorders `name.candidates` to put the pick first, sets
+  `name.value`, and stores `predictions.vlm = { pick, text, provider }`.
+
+Enable with **Claude** (set `ANTHROPIC_API_KEY`) or **local Ollama vision**:
+
+```bash
+docker compose --profile llm up -d ollama          # start the model server
+docker compose exec ollama ollama pull llava:7b    # pull the vision model
+# then run the web app with the channel switched on:
+#   VLM_ASSIST=1 VLM_PROVIDER=ollama  (or =claude with a key)
+# scan a card — uncertain shortlists get a VLM "AI read" + reordered candidates
+```
+
+Env lives in `.env.example`: `VLM_ASSIST=` (off), `VLM_PROVIDER=auto`,
+`VLM_MODEL=claude-opus-4-8`, `OLLAMA_VISION_MODEL=llava:7b`.
+
 ## Contributing (non-technical + AI welcome)
 
 Add a page under `apps/web/app/demos/<your-slug>/page.tsx` and register it in
