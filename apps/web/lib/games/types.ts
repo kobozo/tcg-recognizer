@@ -58,6 +58,9 @@ export interface GameProvider {
   getCard(id: string): Promise<GameCardDetail | null>;
   /** All printings/versions sharing this card's name, oldest first. */
   getPrintings(name: string): Promise<GameCard[]>;
+  /** Search cards by (partial) name for the correction picker; each carries its
+   *  set + number so a correction identifies an exact card. */
+  searchCards(query: string, limit?: number): Promise<GameCard[]>;
   /** Look up a card by name for metadata + market value. null on miss/error. */
   enrich(name: string): Promise<import("@/lib/types").Enrichment | null>;
 }

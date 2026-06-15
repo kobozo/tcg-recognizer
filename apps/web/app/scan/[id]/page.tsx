@@ -62,8 +62,10 @@ export default async function ScanResultPage({
         />
         <FeedbackControl
           scanId={scan.id}
+          game={scan.game}
           predictedName={predictions.name?.value ?? ""}
-          candidates={(predictions.name?.candidates ?? []).map((c) => c.value)}
+          predictedSet={predictions.set?.value}
+          predictedNumber={predictions.card_number?.value}
         />
       </div>
     </Container>

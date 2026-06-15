@@ -10,12 +10,14 @@ type Props = {
   enrichment?: Enrichment | null;
 };
 
+// Collection (set), name and number are the focus — they identify the exact
+// card; type/rarity are secondary.
 const FIELDS: { key: keyof CardPredictions; label: string }[] = [
-  { key: "name", label: "Name" },
-  { key: "type", label: "Type" },
-  { key: "set", label: "Set" },
-  { key: "rarity", label: "Rarity" },
+  { key: "name", label: "Card name" },
+  { key: "set", label: "Collection" },
   { key: "card_number", label: "Card number" },
+  { key: "type", label: "Type" },
+  { key: "rarity", label: "Rarity" },
 ];
 
 function AttributeRow({ label, pred }: { label: string; pred?: Prediction }) {
@@ -55,6 +57,19 @@ export default function CardProfile({ imageSrc, predictions, enrichment }: Props
 
       {/* Right: predicted attributes */}
       <div className="flex flex-col gap-5">
+        {/* Focus: collection · card name · number — what identifies the card */}
+        <div className="rounded-xl border border-border bg-surface/60 p-4">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">
+            {name?.value || "Unknown card"}
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            <span className="font-medium text-foreground/90">
+              {predictions.set?.value || "Unknown collection"}
+            </span>
+            {predictions.card_number?.value ? ` · #${predictions.card_number.value}` : ""}
+          </p>
+        </div>
+
         {FIELDS.map(({ key, label }) => (
           <AttributeRow key={key} label={label} pred={predictions[key] as Prediction | undefined} />
         ))}

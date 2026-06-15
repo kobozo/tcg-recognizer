@@ -167,6 +167,33 @@ export const pokemonProvider: GameProvider = {
     }
   },
 
+  async searchCards(query, limit = 24): Promise<GameCard[]> {
+    const q = query.trim().replace(/"/g, "");
+    if (q.length < 2) return [];
+    try {
+      const enc = encodeURIComponent(`name:"${q}*"`);
+      const res = await fetch(
+        `${API}/cards?q=${enc}&pageSize=${limit}&orderBy=name,set.releaseDate` +
+          `&select=id,name,number,rarity,images,set`,
+        { headers: headers(), next: { revalidate: 3600 }, signal: AbortSignal.timeout(10000) },
+      );
+      if (!res.ok) return [];
+      const json = (await res.json()) as { data: FullCard[] };
+      return json.data.map((c) => ({
+        id: c.id,
+        name: c.name,
+        number: c.number ?? "",
+        rarity: c.rarity,
+        image: c.images?.small,
+        setId: c.set?.id,
+        setName: c.set?.name,
+        releaseDate: c.set?.releaseDate ? c.set.releaseDate.replaceAll("/", "-") : "",
+      }));
+    } catch {
+      return [];
+    }
+  },
+
   async enrich(name): Promise<Enrichment | null> {
     try {
       const q = encodeURIComponent(`name:"${name}"`);

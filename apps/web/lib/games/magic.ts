@@ -237,6 +237,31 @@ export const magicProvider: GameProvider = {
     }
   },
 
+  async searchCards(query, limit = 24): Promise<GameCard[]> {
+    const q = query.trim();
+    if (q.length < 2) return [];
+    try {
+      const res = await fetch(
+        `${API}/cards/search?q=${encodeURIComponent(q)}&unique=cards&order=name`,
+        { headers: UA, next: { revalidate: 3600 }, signal: AbortSignal.timeout(10000) },
+      );
+      if (!res.ok) return [];
+      const json = (await res.json()) as { data: FullCard[] };
+      return json.data.slice(0, limit).map((c) => ({
+        id: c.id,
+        name: c.name,
+        number: c.collector_number ?? "",
+        rarity: c.rarity,
+        image: c.image_uris?.small ?? c.card_faces?.[0]?.image_uris?.small,
+        setId: c.set,
+        setName: c.set_name,
+        releaseDate: c.released_at ?? "",
+      }));
+    } catch {
+      return [];
+    }
+  },
+
   async enrich(name): Promise<Enrichment | null> {
     try {
       const res = await fetch(
