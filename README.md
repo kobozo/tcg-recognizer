@@ -53,6 +53,39 @@ bash scripts/dvc.sh repro                          # reproduce the model (real t
 bash scripts/dvc.sh metrics show                   # recall@1/@5/@10 …
 ```
 
+## Local LLM via Ollama + provider router
+
+The natural-language **collection assistant** routes through a small provider
+abstraction (`apps/web/lib/llm/`) so it can use either a cloud model (**Claude**)
+or a **local, private model served by Ollama** — demonstrating model serving and
+cost/capability routing. Everything is opt-in and CI-safe.
+
+- **Router** (`lib/llm/router.ts`) selects a backend from `LLM_PROVIDER`:
+  - `claude` — Anthropic only (needs `ANTHROPIC_API_KEY`).
+  - `ollama` — local Ollama only (needs a reachable `OLLAMA_URL`).
+  - `auto` (default) — prefer Claude when a key is present (more capable),
+    otherwise Ollama; if the chosen backend is unreachable it **falls back** to
+    the other. With neither usable, the assistant stays inert and shows the same
+    "not configured" message as before.
+- **Claude** (`lib/llm/claude.ts`) wraps the official `@anthropic-ai/sdk`
+  (`ASSISTANT_MODEL`, default `claude-opus-4-8`).
+- **Ollama** (`lib/llm/ollama.ts`) calls the native non-streaming
+  `POST /api/chat` over HTTP with a 30 s timeout, so an unreachable server fails
+  fast and lets the router fall back. Default model `llama3.2:1b` (small — this
+  box is RAM-tight); override with `OLLAMA_MODEL`.
+
+Enable the local backend (the `ollama` service lives behind the `llm` profile,
+so the default `docker compose up` and CI are unaffected):
+
+```bash
+docker compose --profile llm up -d ollama        # start the model server
+docker compose exec ollama ollama pull llama3.2:1b   # pull the model (matches OLLAMA_MODEL)
+# then open the assistant in the web app and ask a question
+```
+
+Env lives in `.env.example`: `LLM_PROVIDER=auto`, `OLLAMA_URL=http://ollama:11434`,
+`OLLAMA_MODEL=llama3.2:1b` (plus the existing `ANTHROPIC_API_KEY` / `ASSISTANT_MODEL`).
+
 ## Contributing (non-technical + AI welcome)
 
 Add a page under `apps/web/app/demos/<your-slug>/page.tsx` and register it in

@@ -34,8 +34,10 @@ echo "==> build trainer + inference"
 docker compose build trainer inference >/dev/null
 
 echo "==> build index ($N cards, $EMB, head=${HEAD:-none})"
+# METRICS_PATH to a throwaway so this e2e never clobbers the tracked DVC metric.
 docker compose run --rm --user "$(id -u):$(id -g)" \
   -e EMBEDDER="$EMB" -e EMBED_HEAD="$HEAD" -e SAMPLE_SIZE="$N" -e EVAL_CARDS=1 -e EVAL_VIEWS=1 \
+  -e METRICS_PATH=/tmp/e2e-metrics.json \
   trainer python main.py >/dev/null
 
 echo "==> start inference"

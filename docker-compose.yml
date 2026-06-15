@@ -17,6 +17,10 @@ services:
     env_file: .env
     environment:
       INFERENCE_URL: http://inference:8001
+      # Local LLM endpoint for the collection assistant's provider router (SP5).
+      # The `ollama` service is opt-in (profile `llm`); harmless when it's down —
+      # the router falls back to Claude or the inert "not configured" message.
+      OLLAMA_URL: http://ollama:11434
     volumes:
       - uploads:/app/uploads
     depends_on:
@@ -122,6 +126,19 @@ services:
       - qdrant
     restart: unless-stopped
 
+  # --- OPT-IN: local LLM serving for the collection assistant (profile `llm`) ---
+  # The assistant's provider router (apps/web/lib/llm) can route to a private,
+  # cheap local model instead of Claude. Gated behind `llm` so the default
+  # `docker compose up` and CI are unchanged. After starting it, pull a model:
+  #   docker compose --profile llm up -d ollama
+  #   docker compose exec ollama ollama pull llama3.2:1b   # see OLLAMA_MODEL
+  ollama:
+    image: ollama/ollama
+    profiles: ["llm"]
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+
 volumes:
   caddy_data:
   pgdata:
@@ -129,3 +146,4 @@ volumes:
   uploads:
   mlflow_data:
   qdrant_storage:
+  ollama_models:
