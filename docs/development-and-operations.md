@@ -24,12 +24,12 @@ The owner develops on this machine **remotely**, so there is no usable
 
 These two are the only host-published ports (`docker-compose.yml`: `proxy`
 publishes 80/443, `mlflow` publishes 5000). The **inference**, **db**, **ocr**,
-**qdrant**, and **ollama** services publish **no host ports** — they are only
+and **ollama** services publish **no host ports** — they are only
 reachable on the internal compose network (e.g. `http://inference:8001`). This is
 intentional: the only public surface is the web app via the proxy. Tests that hit
-inference/ocr/qdrant therefore do so with `docker compose exec`/`run` from
+inference/ocr therefore do so with `docker compose exec`/`run` from
 *inside* the network, never from the host (see `scripts/e2e-recognition-card.sh`,
-`scripts/e2e-qdrant.sh`).
+`scripts/e2e-ocr.sh`).
 
 > HTTPS exists because **camera scanning needs a secure context**
 > (`getUserMedia`). `Caddyfile` serves an internal-CA cert for the LAN IP and
@@ -120,17 +120,16 @@ docker compose up -d --build        # app at http://192.168.3.177
 | `mlflow` | `ghcr.io/mlflow/mlflow:v2.22.0` | **5000** | MLOps tracking + model registry | `docker-compose.yml` |
 | `sentinel` | `services/sentinel/Dockerfile` | internal | PR-shepherd agent (inert unless configured) | `services/sentinel/Dockerfile` |
 | `trainer` | `services/trainer/Dockerfile` | n/a (run-once) | Builds the index / trains; profile `tools` | `services/trainer/Dockerfile` |
-| `ocr` | `services/ocr/Dockerfile` | internal `8002` | OCR → text vector; profile `extras` | `services/ocr/Dockerfile` |
-| `qdrant` | `qdrant/qdrant:v1.18.2` | internal `6333` | Text-vector search; profile `extras` | `docker-compose.yml` |
+| `ocr` | `services/ocr/Dockerfile` | internal `8002` | OCR → text vector, stored/searched in Postgres + pgvector (`card_text_vectors`); profile `extras` | `services/ocr/Dockerfile` |
 | `ollama` | `ollama/ollama` | internal `11434` | Local LLM/VLM serving; profile `llm` | `docker-compose.yml` |
 
 **Profiles** keep the default `docker compose up` (and CI) lean: only services
-*without* a `profiles:` key start by default. `trainer` (`tools`), `ocr`+`qdrant`
+*without* a `profiles:` key start by default. `trainer` (`tools`), `ocr`
 (`extras`), and `ollama` (`llm`) are opt-in (§4).
 
 **Named volumes** (`docker-compose.yml`): `pgdata` (Postgres), `models` (shared
 model artifacts, mounted into `inference` and `trainer`), `uploads` (scan
-images), `mlflow_data`, `caddy_data`, `qdrant_storage`, `ollama_models`.
+images), `mlflow_data`, `caddy_data`, `ollama_models`.
 The card-image dataset is **bind-mounted** from the host `./ml/datasets`
 (read-write for `trainer`, **read-only** for `inference` so geometric re-ranking
 can load reference images).
@@ -186,10 +185,10 @@ Copy `.env.example` to `.env`. The web and most services load it via
 > the same env). The recognition e2e enforces this by reading `.env` and passing
 > the same values to the trainer (`scripts/e2e-recognition-card.sh`).
 
-### OCR + Qdrant text channel (opt-in)
+### OCR text channel (opt-in)
 | Var | Default | What it does |
 |---|---|---|
-| `OCR_QDRANT` | empty | `1` enables folding OCR'd-text Qdrant matches into a scan's name candidates (an extra recognition channel). Requires the `extras` profile. |
+| `OCR_ENABLED` | empty | `1` enables folding OCR'd-text matches into a scan's name candidates (an extra recognition channel; the OCR service stores/searches its text vectors in Postgres + pgvector, the same store as the core recognizer). Requires the `extras` profile. |
 | `OCR_URL` | `http://ocr:8002` | Web → OCR service URL. |
 
 ### MLOps
@@ -246,12 +245,16 @@ docker compose up -d --build inference
 Validate the head **generalizes** (not just memorizes its training cards) with
 the held-out-card eval (§5).
 
-### 4b. `extras` profile — OCR + Qdrant text channel
+### 4b. `extras` profile — OCR text channel
 
 ```bash
-docker compose --profile extras up -d --build qdrant ocr
-# and set OCR_QDRANT=1 in .env to fold OCR matches into scans
+docker compose --profile extras up -d --build ocr
+# and set OCR_ENABLED=1 in .env to fold OCR matches into scans
 ```
+
+The OCR service stores and searches its text vectors in the **same Postgres +
+pgvector** store as the core recognizer (table `card_text_vectors`) — there is no
+separate vector database to start.
 
 ### 4c. `llm` profile — local Ollama (assistant + VLM)
 
@@ -306,7 +309,7 @@ failure. The recognition/flywheel ones download card images, so they are heavier
 | `e2e-flywheel.sh` | Self-improving loop: scan persists embedding → user correction (`Feedback`) → trainer folds it into the index → the corrected label is now recognized. | |
 | `e2e-llm.sh` | Local LLM round-trip through the app's router (`chatRouted` → Ollama). | Needs `llm` profile; pulls `OLLAMA_MODEL`. |
 | `e2e-vlm.sh` | VLM disambiguation picks the right card (Blastoise vs decoys) via `vlmDisambiguate` → Ollama vision. | Needs `llm` profile; pulls `OLLAMA_VISION_MODEL`. |
-| `e2e-qdrant.sh` | OCR + Qdrant channel: reindex → text search → OCR a generated PNG → search the OCR'd text. | Needs `extras` profile; all in-network. |
+| `e2e-ocr.sh` | OCR + pgvector channel: reindex → text search → OCR a generated PNG → search the OCR'd text (prints `OCR (pgvector) E2E OK`). | Needs `extras` profile; all in-network. Runs in an **isolated** compose project so its `down -v` can't touch the main stack's volumes. |
 | `embed-parity.sh` | Server Python `embed()` and browser/Node `embedRgba()` produce the same **classical** 512-d vector (cosine ≥ 0.999). | Proves on-device classical embedding matches the index. |
 | `onnx-parity.sh` | Same parity for **DINOv2** (`EMBEDDER=onnx`): server `_embed_onnx()` vs Node `embedRgbaOnnx()` on a real card (cosine ≥ 0.90). | Downloads the model + an image. |
 | `eval-baselines.sh` | Builds the index per embedder and prints recall@1/@5/@10 on synthetic phone-photos (classical vs onnx). | `SUBSET=`, `EVAL_CARDS=`. |

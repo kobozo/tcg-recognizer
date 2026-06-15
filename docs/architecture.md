@@ -19,9 +19,10 @@ all API routes. Recognition is delegated to a **FastAPI inference service** that
 embeds the photo and runs a **pgvector** nearest-neighbor search over an index
 built by a one-shot **trainer** job, which logs to **MLflow**. Several
 capabilities are *opt-in*, gated behind Docker Compose **profiles** so the
-default `docker compose up` (and CI) stays small and deterministic: a
-**Qdrant + OCR** text channel (`extras`), a local **Ollama** LLM/VLM backend
-(`llm`), and the trainer itself (`tools`). A long-running **Sentinel** agent
+default `docker compose up` (and CI) stays small and deterministic: an
+**OCR** text channel (`extras`) that reuses the same Postgres + pgvector store as
+the core recognizer, a local **Ollama** LLM/VLM backend (`llm`), and the trainer
+itself (`tools`). A long-running **Sentinel** agent
 (PR shepherd) sits alongside, inert until credentialed.
 
 ```mermaid
@@ -37,7 +38,6 @@ graph TD
     sentinel["sentinel — Node/TS agent<br/>(no port)<br/>default profile"]
     trainer["trainer — one-shot Python job<br/>(run on demand)<br/>profile: tools"]
     ocr["ocr — FastAPI / uvicorn<br/>:8002<br/>profile: extras"]
-    qdrant[("qdrant — vector DB<br/>:6333<br/>profile: extras")]
     ollama["ollama — local LLM/VLM<br/>:11434<br/>profile: llm"]
   end
 
@@ -46,12 +46,12 @@ graph TD
 
   web -->|/predict HTTP| inference
   web -->|Prisma / SQL| db
-  web -.->|OCR_QDRANT=1| ocr
+  web -.->|OCR_ENABLED=1| ocr
   web -.->|LLM_PROVIDER / VLM_PROVIDER| ollama
   web -.->|browser link :5000| mlflow
 
   inference -->|pgvector NN over card_vectors| db
-  ocr -->|text vectors| qdrant
+  ocr -.->|pgvector NN over card_text_vectors| db
 
   trainer -->|build_index → card_vectors,<br/>ModelVersion| db
   trainer -->|params / metrics / artifacts| mlflow
@@ -171,20 +171,24 @@ service name (e.g. `http://inference:8001`). Profiles gate the optional ones.
 - **Tech:** Node 22 / TypeScript, built to `dist/` (`services/sentinel/Dockerfile`).
 - **Reached:** no port; runs as a background worker. Depends on `db`.
 
-### ocr + qdrant — text recognition channel (profile: `extras`)
+### ocr — text recognition channel (profile: `extras`)
 - **Role:** an *extra* recognition channel — OCR a card to text, vectorize the
-  text, search Qdrant — whose top matches are folded into the scan's name
-  candidates (`services/ocr/app/main.py`, `apps/web/lib/ocrChannel.ts`).
+  text, search **Postgres + pgvector** — whose top matches are folded into the
+  scan's name candidates (`services/ocr/app/main.py`,
+  `apps/web/lib/ocrChannel.ts`).
 - **ocr tech:** FastAPI + uvicorn + Tesseract (`pytesseract`), with a
   deterministic, **model-free** 256-dim character-3gram/token hashing embedder
   (no model download, CPU-only). Endpoints `/ocr_search`, `/search`, `/reindex`,
   `/health` on `:8002`.
-- **qdrant:** `qdrant/qdrant:v1.18.2`, cosine collection `cards_text`, persisted
-  to `qdrant_storage`. `ocr` talks to it via `QDRANT_URL=http://qdrant:6333`.
-- **Gating:** both services carry `profiles: ["extras"]`; the web side only
-  calls them when `OCR_QDRANT` is truthy (`apps/web/lib/ocrChannel.ts`
-  `ocrEnabled()`). Every Qdrant/OCR call is defensive (empty results, never
-  500) so the default stack is unaffected.
+- **Storage:** the **same Postgres + pgvector store as the core recognizer** (no
+  separate vector DB). Text vectors live in a `card_text_vectors` table
+  `(id, game, card_id, name, set_name, number, embedding vector(256))`, queried
+  with the cosine `<=>` operator exactly like `card_vectors`. The service
+  connects via `DATABASE_URL` (psycopg2 + pgvector) and `depends_on` `db`.
+- **Gating:** the service carries `profiles: ["extras"]`; the web side only
+  calls it when `OCR_ENABLED` is truthy (`apps/web/lib/ocrChannel.ts`
+  `ocrEnabled()`). Every OCR/DB call is defensive (empty results, never 500) so
+  the default stack is unaffected.
 - **Why it exists:** confirmed/corrected OCR matches become `Feedback`, so this
   channel also "teaches" the recognizer through the same flywheel.
 
@@ -232,9 +236,9 @@ End-to-end, from the camera to the result page. Server code:
    - returns `name`/`type`/`set`/`rarity`/`card_number` (each with confidence),
      `image_url`, `model_version`, and the embedding used (so feedback can be
      fed back). Any failure → per-game **stub** (never 500).
-6. **OCR fusion (optional, `extras`).** If `OCR_QDRANT` is on, `ocrChannel()`
-   calls the `ocr` service and `mergeOcrCandidates()` folds Qdrant text matches
-   into the name candidates (`route.ts`, `lib/ocrChannel.ts`).
+6. **OCR fusion (optional, `extras`).** If `OCR_ENABLED` is on, `ocrChannel()`
+   calls the `ocr` service and `mergeOcrCandidates()` folds its pgvector text
+   matches into the name candidates (`route.ts`, `lib/ocrChannel.ts`).
 7. **VLM disambiguation (optional, `llm`/Claude).** Only when `VLM_ASSIST` is on
    **and** confidence `< 0.6`, `vlmDisambiguate()` asks a vision model to read
    the card and pick from the shortlist; on a pick it reorders candidates and
@@ -256,7 +260,7 @@ sequenceDiagram
   participant W as web (Next.js)
   participant I as inference (FastAPI)
   participant D as Postgres+pgvector
-  participant O as ocr+qdrant (extras)
+  participant O as ocr (extras)
   participant V as VLM (Claude/Ollama)
 
   B->>P: HTTPS POST /api/scan (image, game[, embedding])
@@ -268,8 +272,9 @@ sequenceDiagram
   D-->>I: top-K candidates
   I->>I: optional ORB+RANSAC re-rank
   I-->>W: predictions + embedding + model_version
-  opt OCR_QDRANT=1
-    W->>O: OCR text search; merge candidates
+  opt OCR_ENABLED=1
+    W->>O: OCR text search (pgvector); merge candidates
+    O->>D: pgvector NN over card_text_vectors
   end
   opt VLM_ASSIST=1 and conf<0.6
     W->>V: read card, pick from shortlist
@@ -297,7 +302,7 @@ is which compose files are layered:
 
 **Volumes (named, persistent):** `pgdata` (Postgres), `models` (shared trained
 artifacts / lazily-downloaded ONNX model), `uploads` (scan images, shared
-between web and the inference re-rank mount), `mlflow_data`, `qdrant_storage`,
+between web and the inference re-rank mount), `mlflow_data`,
 `ollama_models`, `caddy_data` (internal CA). The host `./ml/datasets` is
 bind-mounted read-only into `inference` and read-write into `trainer`.
 
@@ -309,8 +314,8 @@ waits for a healthy `web`, and `web`/`inference`/`trainer` wait for a healthy
 
 **Switching on optional subsystems (profiles):**
 - training: `docker compose run --rm trainer` (`tools`).
-- OCR text channel: `docker compose --profile extras up -d ocr qdrant` and set
-  `OCR_QDRANT=1`.
+- OCR text channel: `docker compose --profile extras up -d ocr` and set
+  `OCR_ENABLED=1`.
 - local LLM/VLM: `docker compose --profile llm up -d ollama` then pull a model.
 
 Configuration is centralized in `.env` (template `.env.example`), covering
@@ -337,7 +342,7 @@ Sentinel credentials, and `PUBLIC_HOST=192.168.3.177` for the LAN binding.
 ├── services/
 │   ├── inference/app/main.py    FastAPI: deskew→embed→pgvector NN→rerank (+ embedding, rerank)
 │   ├── trainer/src/main.py      one-shot pipeline + pipelines/{ingestion,training,evaluation}
-│   ├── ocr/app/main.py          FastAPI OCR + Qdrant text channel (extras)
+│   ├── ocr/app/main.py          FastAPI OCR text channel → pgvector (extras)
 │   └── sentinel/src/index.ts    PR-shepherd agent (paused until credentialed)
 ├── scripts/                     e2e-*, eval-*, dvc*, train-head, smoke, install, retrain …
 ├── ml/                          datasets/ (DVC-tracked, git-ignored), models/, metrics.json

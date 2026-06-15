@@ -4,7 +4,7 @@ python-multipart==0.0.20
 pillow
 numpy
 pytesseract
-qdrant-client
+psycopg2-binary
 requests==2.32.3
 pytest==8.3.4
 httpx==0.28.1

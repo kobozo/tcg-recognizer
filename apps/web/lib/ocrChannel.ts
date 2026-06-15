@@ -8,7 +8,7 @@ const OCR_URL = process.env.OCR_URL ?? "http://ocr:8002";
  * Gated so the default stack (and CI) never depends on the `extras` services.
  */
 export function ocrEnabled(): boolean {
-  const v = (process.env.OCR_QDRANT ?? "").trim().toLowerCase();
+  const v = (process.env.OCR_ENABLED ?? "").trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 

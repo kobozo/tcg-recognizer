@@ -31,8 +31,8 @@ how it was built and evaluated, and where it should and should not be trusted.
      a vision-language model (Claude vision or a local Ollama vision model) reads
      the card's printed text and picks from the shortlist; the pick is
      constrained to candidates and never overrides on its own.
-  6. **OCR / text channel** (optional, Qdrant) — a complementary printed-text
-     match for hard cases.
+  6. **OCR / text channel** (optional, Postgres + pgvector `card_text_vectors`)
+     — a complementary printed-text match for hard cases.
 - **Provider routing:** the LLM/VLM channels route through a provider
   abstraction (`apps/web/lib/llm/`) that prefers Claude when keyed, else a local
   Ollama model, with graceful fallback. The optional assistant text model

@@ -100,7 +100,7 @@ service bullets down the side or below.
 - **FastAPI** inference service — the computer vision
 - **PostgreSQL + pgvector** — vector store & nearest-neighbour search
 - **Trainer + MLflow** — index build, training, experiment tracking
-- Optional: **Ollama** (local LLM) · **OCR + Qdrant** (text channel)
+- Optional: **Ollama** (local LLM) · **OCR text channel** (also on pgvector)
 - **Caddy** reverse proxy → HTTPS on the LAN (camera needs a secure context)
 - Runs on a **single CPU machine — no GPU**
 
@@ -108,7 +108,8 @@ service bullets down the side or below.
 > "Architecturally it's a small set of Docker Compose containers. A Next.js app is the front end and
 > API. A FastAPI service does the computer vision. Postgres with the pgvector extension stores the
 > card vectors and does nearest-neighbour search. A trainer service with MLflow handles training and
-> tracking. Optional services — a local Ollama LLM and an OCR-plus-Qdrant text channel — are opt-in.
+> tracking. Optional services — a local Ollama LLM and an OCR text channel (which reuses the same
+> pgvector store) — are opt-in.
 > Everything sits behind a Caddy reverse proxy that gives me HTTPS on the LAN, which I need because
 > the browser camera API only works over a secure connection. The whole thing runs on a single CPU
 > machine — no GPU — and that constraint shows up throughout the design."
@@ -128,7 +129,7 @@ half. This is the most important slide — give the table visual weight.
 - **2 · Embedding** — classical descriptor → **DINOv2-small** (ONNX, frozen, zero-shot)
 - **3 · Learned head** — small MLP trained with **InfoNCE** metric learning on synthetic phone-photos (CPU)
 - **4 · Geometric re-rank** — **ORB** features + **RANSAC** homography verify same artwork
-- **5–6 · Fallbacks** — VLM (local Ollama / Claude) reads the card · OCR + Qdrant text match
+- **5–6 · Fallbacks** — VLM (local Ollama / Claude) reads the card · OCR + pgvector text match
 
 **Table — "Embedding stage → recall@1" (3k-card synthetic-photo eval):**
 

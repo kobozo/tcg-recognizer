@@ -21,7 +21,7 @@ photo
                     └─(4)─ pgvector cosine nearest-neighbour over card_vectors → top-K shortlist
                           └─(5)─ geometric re-rank (ORB + RANSAC homography inliers)   [optional]
                                 └─(6)─ VLM disambiguation, gated on low confidence      [optional]
-                                      └─(7)─ OCR + Qdrant text channel (complementary)  [optional]
+                                      └─(7)─ OCR + pgvector text channel (complementary)  [optional]
                                             → ranked candidates the user confirms
 ```
 
@@ -365,7 +365,7 @@ common easy path.
 
 ---
 
-## 7. OCR + Qdrant text channel (complementary signal)
+## 7. OCR + pgvector text channel (complementary signal)
 
 **What.** An opt-in printed-text match: OCR the card, search a text index, and
 fold the hits in as **extra name candidates**.
@@ -380,12 +380,14 @@ fold the hits in as **extra name candidates**.
   **character 3-grams** into 256 buckets (counts) using a stable FNV-1a hash,
   L2-normalised. The 3-gram features make it robust to OCR noise / partial reads
   (a query "charizard" still overlaps a doc "charizard 4/102 base fire").
-- **Search:** Qdrant cosine NN over the `cards_text` collection, filtered by game;
-  the index is built by `/reindex` (FNV-based stable point ids so re-runs upsert
-  in place). Results are turned into deduped candidates with the cosine score as
-  confidence (`ocrResultsToCandidates`) and merged into the shortlist without
-  duplicating the primary name (`mergeOcrCandidates`).
-- Gated by `OCR_QDRANT` (Docker Compose `extras` profile); off by default,
+- **Search:** **Postgres + pgvector** cosine NN over the `card_text_vectors`
+  table (`vector(256)` per card, `ORDER BY embedding <=> %s::vector`), filtered by
+  game — the **same store and operator the core recognizer uses** (no separate
+  vector DB). The index is built by `/reindex` (stable per-card ids so re-runs
+  upsert in place). Results are turned into deduped candidates with the cosine
+  score as confidence (`ocrResultsToCandidates`) and merged into the shortlist
+  without duplicating the primary name (`mergeOcrCandidates`).
+- Gated by `OCR_ENABLED` (Docker Compose `extras` profile); off by default,
   8 s timeout, never throws — recognition does not depend on it.
 
 **Why a complementary channel + the flywheel.** Printed text is independent of
