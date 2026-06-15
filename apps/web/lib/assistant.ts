@@ -1,13 +1,12 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import { getGameMeta, getProvider, normalizeSetName } from "@/lib/games";
 import { formatMoney, formatTotals } from "@/lib/format";
 import type { CardPredictions, Enrichment } from "@/lib/types";
-
-const MODEL = process.env.ASSISTANT_MODEL ?? "claude-opus-4-8";
+import { chatRouted, getProvider as getLlmProvider, NoProviderError } from "@/lib/llm/router";
 
 export function assistantConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  // Configured when any LLM backend (Claude or a default-on Ollama) is usable.
+  return getLlmProvider() !== undefined;
 }
 
 type Stored = CardPredictions & { enrichment?: Enrichment | null };
@@ -85,39 +84,40 @@ export async function askAssistant(
   userId: string,
   question: string,
 ): Promise<{ answer?: string; error?: string }> {
+  const NOT_CONFIGURED =
+    "The AI assistant isn't configured yet. Add ANTHROPIC_API_KEY to .env (Claude), " +
+    "or run the local Ollama model (docker compose --profile llm up -d ollama), to enable it.";
+
   if (!assistantConfigured()) {
-    return {
-      error:
-        "The AI assistant isn't configured yet. Add ANTHROPIC_API_KEY to .env to enable it.",
-    };
+    return { error: NOT_CONFIGURED };
   }
   try {
     const context = await buildCollectionContext(userId);
-    const client = new Anthropic(); // reads ANTHROPIC_API_KEY from env
-    const res = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1500,
-      system:
-        "You are a knowledgeable trading-card collection assistant for a Pokémon/Magic card recognizer app. " +
-        "Answer the user's questions about THEIR collection using only the data provided below. " +
-        "Be concise and practical — completion gaps, total/per-set value, what to chase or consider selling. " +
-        "Prices are point-in-time snapshots in the listed currency (the user is in Belgium → EUR). " +
-        "If the data is insufficient to answer, say so plainly. " +
-        "Respond directly with your final answer; do not include exploratory reasoning.\n\n" +
-        "=== USER'S COLLECTION ===\n" +
-        context,
-      messages: [{ role: "user", content: question }],
-    });
-    const answer = res.content
-      .map((b) => (b.type === "text" ? b.text : ""))
-      .join("\n")
-      .trim();
+    const system =
+      "You are a knowledgeable trading-card collection assistant for a Pokémon/Magic card recognizer app. " +
+      "Answer the user's questions about THEIR collection using only the data provided below. " +
+      "Be concise and practical — completion gaps, total/per-set value, what to chase or consider selling. " +
+      "Prices are point-in-time snapshots in the listed currency (the user is in Belgium → EUR). " +
+      "If the data is insufficient to answer, say so plainly. " +
+      "Respond directly with your final answer; do not include exploratory reasoning.\n\n" +
+      "=== USER'S COLLECTION ===\n" +
+      context;
+
+    const answer = await chatRouted(
+      [
+        { role: "system", content: system },
+        { role: "user", content: question },
+      ],
+      { maxTokens: 1500 },
+    );
     return { answer: answer || "(The assistant returned no text.)" };
   } catch (e) {
+    // No usable backend at all → fall back to the inert "not configured" message.
+    if (e instanceof NoProviderError) return { error: NOT_CONFIGURED };
     return {
       error:
-        e instanceof Anthropic.APIError
-          ? `Assistant error (${e.status ?? "?"}): ${e.message}`
+        e instanceof Error
+          ? `The assistant request failed: ${e.message}`
           : "The assistant request failed. Please try again.",
     };
   }
