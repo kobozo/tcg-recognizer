@@ -1,6 +1,10 @@
 services:
   proxy:
     image: caddy:2-alpine
+    environment:
+      # Drives the Caddyfile's default_sni + HTTPS site address, so the same
+      # config serves any LAN IP (dev box .177, the VM .100, …).
+      PUBLIC_HOST: ${PUBLIC_HOST:-192.168.3.177}
     ports:
       - "0.0.0.0:80:80"
       - "0.0.0.0:443:443"
