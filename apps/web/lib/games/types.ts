@@ -42,6 +42,12 @@ export type GameCardDetail = GameCard & {
   largeImage?: string;
   price?: number;
   currency?: string;
+  /**
+   * Print finishes/variants of THIS exact card (same set + number) — e.g.
+   * Normal, Holofoil, Reverse Holofoil, 1st Edition — with their market price.
+   * Derived from the card's own per-finish pricing (not separate card objects).
+   */
+  variants?: { name: string; price?: number; currency?: string }[];
 };
 
 export interface GameProvider {
@@ -52,6 +58,9 @@ export interface GameProvider {
   getCard(id: string): Promise<GameCardDetail | null>;
   /** All printings/versions sharing this card's name, oldest first. */
   getPrintings(name: string): Promise<GameCard[]>;
+  /** Search cards by (partial) name for the correction picker; each carries its
+   *  set + number so a correction identifies an exact card. */
+  searchCards(query: string, limit?: number): Promise<GameCard[]>;
   /** Look up a card by name for metadata + market value. null on miss/error. */
   enrich(name: string): Promise<import("@/lib/types").Enrichment | null>;
 }

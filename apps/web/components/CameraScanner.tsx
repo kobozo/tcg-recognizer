@@ -60,6 +60,14 @@ export default function CameraScanner({
   const [error, setError] = useState<string | null>(null);
   const [cameraSupported, setCameraSupported] = useState(true);
 
+  // Auto-capture: detect a steady, in-focus card filling the frame and snap
+  // automatically (no button press). Heuristic + dependency-free.
+  const [autoCapture, setAutoCapture] = useState(true);
+  const [detectHint, setDetectHint] = useState<string | null>(null);
+  const prevGrayRef = useRef<Float32Array | null>(null);
+  const stableRef = useRef(0);
+  const autoFiredRef = useRef(false);
+
   // Track the latest object URL in a ref so the unmount cleanup (which closes
   // over its initial render's state) can always revoke the current one.
   useEffect(() => {
@@ -112,7 +120,7 @@ export default function CameraScanner({
     }
   }
 
-  function capture() {
+  const capture = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
@@ -127,14 +135,88 @@ export default function CameraScanner({
       (blob) => {
         if (!blob) return;
         stopStream();
-        if (captured) URL.revokeObjectURL(captured.url);
+        setDetectHint(null);
+        if (capturedUrlRef.current) URL.revokeObjectURL(capturedUrlRef.current);
         setCaptured({ url: URL.createObjectURL(blob), blob });
         setPhase("captured");
       },
       "image/jpeg",
       0.92,
     );
-  }
+  }, [stopStream]);
+
+  // Auto-capture loop: while streaming, sample the central frame ~5x/s and snap
+  // when a detailed (card present, in focus) and steady (not moving) view is
+  // held for ~1s. Pure heuristic — manual Capture stays available.
+  useEffect(() => {
+    if (phase !== "streaming" || !autoCapture) {
+      setDetectHint(null);
+      return;
+    }
+    autoFiredRef.current = false;
+    stableRef.current = 0;
+    prevGrayRef.current = null;
+    const SWp = 72;
+    const SHp = 96;
+    const cv = document.createElement("canvas");
+    cv.width = SWp;
+    cv.height = SHp;
+    const cx = cv.getContext("2d", { willReadFrequently: true });
+    const startedAt = Date.now();
+
+    const id = setInterval(() => {
+      const v = videoRef.current;
+      if (!v || !cx || v.videoWidth === 0 || autoFiredRef.current) return;
+      const vw = v.videoWidth;
+      const vh = v.videoHeight;
+      // Sample the central card region (~the on-screen guide), ignoring background.
+      const rw = vw * 0.72;
+      const rh = vh * 0.85;
+      cx.drawImage(v, (vw - rw) / 2, (vh - rh) / 2, rw, rh, 0, 0, SWp, SHp);
+      const { data } = cx.getImageData(0, 0, SWp, SHp);
+      const gray = new Float32Array(SWp * SHp);
+      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        gray[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      }
+      // Edge energy → detail/focus; high for a real card, low for blank/blurred.
+      let edge = 0;
+      let n = 0;
+      for (let y = 1; y < SHp - 1; y++) {
+        for (let x = 1; x < SWp - 1; x++) {
+          const o = y * SWp + x;
+          edge += Math.abs(gray[o] - gray[o + 1]) + Math.abs(gray[o] - gray[o + SWp]);
+          n++;
+        }
+      }
+      edge /= n;
+      // Motion → steadiness, vs the previous sampled frame.
+      let motion = Infinity;
+      const prev = prevGrayRef.current;
+      if (prev) {
+        let m = 0;
+        for (let i = 0; i < gray.length; i++) m += Math.abs(gray[i] - prev[i]);
+        motion = m / gray.length;
+      }
+      prevGrayRef.current = gray;
+
+      const armed = Date.now() - startedAt > 700;
+      const cardPresent = edge >= 7; // enough detail in frame
+      const steady = motion <= 3.5; // not moving
+      if (armed && cardPresent && steady) {
+        stableRef.current += 1;
+        setDetectHint(stableRef.current >= 2 ? "Hold steady — capturing…" : "Card detected…");
+        if (stableRef.current >= 4) {
+          autoFiredRef.current = true;
+          capture();
+        }
+      } else {
+        stableRef.current = 0;
+        setDetectHint(cardPresent ? "Hold steady…" : "Point at a card…");
+      }
+    }, 220);
+
+    return () => clearInterval(id);
+  }, [phase, autoCapture, capture]);
 
   function retake() {
     if (captured) URL.revokeObjectURL(captured.url);
@@ -229,6 +311,17 @@ export default function CameraScanner({
         Recognize on device (private) — the model runs in your browser; only a vector is sent
       </label>
 
+      {/* Auto-capture toggle */}
+      <label className="mx-auto inline-flex cursor-pointer items-center gap-2 text-xs text-muted">
+        <input
+          type="checkbox"
+          checked={autoCapture}
+          onChange={(e) => setAutoCapture(e.target.checked)}
+          className="h-4 w-4 accent-emerald-500"
+        />
+        Auto-capture when a card is detected
+      </label>
+
       {/* Stage */}
       <div className="relative mx-auto aspect-[3/4] w-full max-w-md overflow-hidden rounded-2xl border border-border bg-black/40">
         {/* Live video */}
@@ -281,6 +374,13 @@ export default function CameraScanner({
               <span className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-br-xl border-b-2 border-r-2 border-accent" />
               <div className="absolute inset-x-0 top-0 h-12 animate-scanline bg-gradient-to-b from-primary/40 to-transparent" />
             </div>
+            {autoCapture && detectHint && (
+              <div className="absolute inset-x-0 bottom-3 flex justify-center">
+                <span className="rounded-full bg-background/80 px-3 py-1 text-xs font-medium text-foreground backdrop-blur">
+                  {detectHint}
+                </span>
+              </div>
+            )}
           </div>
         )}
 

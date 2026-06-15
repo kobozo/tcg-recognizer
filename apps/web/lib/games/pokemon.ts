@@ -106,6 +106,7 @@ export const pokemonProvider: GameProvider = {
       if (!c) return null;
       const { price, currency } = pickPrice(c);
       return {
+        variants: pokemonVariants(c),
         id: c.id,
         name: c.name,
         number: c.number ?? "",
@@ -161,6 +162,33 @@ export const pokemonProvider: GameProvider = {
             (a.releaseDate ?? "").localeCompare(b.releaseDate ?? "") ||
             compareCardNumber(a.number, b.number),
         );
+    } catch {
+      return [];
+    }
+  },
+
+  async searchCards(query, limit = 24): Promise<GameCard[]> {
+    const q = query.trim().replace(/"/g, "");
+    if (q.length < 2) return [];
+    try {
+      const enc = encodeURIComponent(`name:"${q}*"`);
+      const res = await fetch(
+        `${API}/cards?q=${enc}&pageSize=${limit}&orderBy=name,set.releaseDate` +
+          `&select=id,name,number,rarity,images,set`,
+        { headers: headers(), next: { revalidate: 3600 }, signal: AbortSignal.timeout(10000) },
+      );
+      if (!res.ok) return [];
+      const json = (await res.json()) as { data: FullCard[] };
+      return json.data.map((c) => ({
+        id: c.id,
+        name: c.name,
+        number: c.number ?? "",
+        rarity: c.rarity,
+        image: c.images?.small,
+        setId: c.set?.id,
+        setName: c.set?.name,
+        releaseDate: c.set?.releaseDate ? c.set.releaseDate.replaceAll("/", "-") : "",
+      }));
     } catch {
       return [];
     }
@@ -239,6 +267,39 @@ type FullCard = {
   tcgplayer?: { prices?: Record<string, { market?: number } | null> };
   cardmarket?: { prices?: { trendPrice?: number; averageSellPrice?: number } };
 };
+
+// Human labels for TCGplayer per-finish price keys (the print variants of one
+// physical card: holo, reverse holo, 1st edition, …).
+const FINISH_LABELS: Record<string, string> = {
+  normal: "Normal",
+  holofoil: "Holofoil",
+  reverseHolofoil: "Reverse Holofoil",
+  "1stEditionNormal": "1st Edition",
+  "1stEditionHolofoil": "1st Edition Holofoil",
+  unlimited: "Unlimited",
+  unlimitedHolofoil: "Unlimited Holofoil",
+};
+const FINISH_ORDER = Object.keys(FINISH_LABELS);
+
+/** Print finishes of this exact card, from TCGplayer per-finish market prices (USD). */
+function pokemonVariants(c: FullCard): { name: string; price?: number; currency?: string }[] {
+  const prices = c.tcgplayer?.prices ?? {};
+  const entries = Object.entries(prices).filter(([, v]) => v);
+  if (entries.length === 0) return [];
+  return entries
+    .map(([k, v]) => ({
+      key: k,
+      name: FINISH_LABELS[k] ?? k.replace(/([A-Z])/g, " $1").replace(/^./, (m) => m.toUpperCase()),
+      price: typeof v?.market === "number" && v.market > 0 ? v.market : undefined,
+      currency: "USD" as const,
+    }))
+    .sort((a, b) => {
+      const ia = FINISH_ORDER.indexOf(a.key);
+      const ib = FINISH_ORDER.indexOf(b.key);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    })
+    .map(({ name, price, currency }) => ({ name, price, currency }));
+}
 
 /** Pick a market price in the preferred currency (EUR by default), falling back. */
 function pickPrice(c: FullCard): { price?: number; currency?: string } {

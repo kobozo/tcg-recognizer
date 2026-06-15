@@ -53,6 +53,11 @@ model Feedback {
   game          String
   predictedName String
   correctedName String
+  // A card belongs to a collection (set) and has a number; capturing these makes
+  // a correction precise (name alone is ambiguous across sets/printings).
+  correctedSet    String?
+  correctedNumber String?
+  correctedCardId String?
   correct       Boolean  @default(false)
   createdAt     DateTime @default(now())
   scan          Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
