@@ -15,17 +15,27 @@ Around the product: an **admin section** (users, user-count, MLOps model-rebuild
 > Erasmus AI project (ML / MLOps / Data Science). Built to run locally via Docker Compose,
 > mirroring a production setup.
 
+## 📚 Documentation
+
+Full technical documentation for reviewers lives in **[`docs/`](docs/)** — start at the
+**[documentation index](docs/README.md)**. Highlights: [architecture](docs/architecture.md),
+[recognition pipeline](docs/recognition-pipeline.md), [MLOps](docs/mlops.md),
+[technology choices (what & why)](docs/technology-choices.md),
+[data & evaluation](docs/data-and-evaluation.md), [Model Card](docs/MODEL_CARD.md), and
+[dev & operations](docs/development-and-operations.md).
+
 ## Status
 
-Built in phases — see [`docs/superpowers/specs/2026-06-13-tcg-recognizer-platform-design.md`](docs/superpowers/specs/2026-06-13-tcg-recognizer-platform-design.md).
+Built in phases (each shipped as a reviewed PR with CI + e2e):
 
-- [ ] ① Foundation — monorepo skeleton, Docker Compose, Caddy, CI, branch protection
-- [ ] ② Product — auth, scan→result (stubbed model), admin shell, demos scaffold
-- [ ] ③ Real ML + MLOps — dataset, trainer, inference, MLOps admin view
-- [ ] ④ Sentinel — PR lifecycle, Slack, auto-merge through gates
-- [ ] ⑤ Polish — confidence overlay, contributor docs
+- [x] ① Foundation — monorepo, Docker Compose, Caddy, CI, branch protection
+- [x] ② Product — auth, scan→result, admin, demos
+- [x] ③ Real ML + MLOps — dataset, trainer, inference, pgvector, MLflow, MLOps admin view
+- [x] ④ AI "edge" upgrades — learned DINOv2 embeddings + projection head, geometric re-rank, on-device path, self-improving flywheel
+- [x] ⑤ Full-dataset training, realistic eval harness, DVC, local Ollama + provider router, VLM-assisted recognition, eval rigor + Model/Data cards
+- [~] Sentinel (PR-shepherd agent) — scaffolded and intentionally **inert** (`SENTINEL_PAUSED=true`)
 
-## Quick start (once Phase ① lands)
+## Quick start
 
 ```bash
 cp .env.example .env   # fill in values
