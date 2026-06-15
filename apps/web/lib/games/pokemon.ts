@@ -1,7 +1,7 @@
 // Pokémon provider — Pokémon TCG API (https://docs.pokemontcg.io). Free; set
 // POKEMON_TCG_API_KEY for higher rate limits.
-import type { GameCard, GameProvider, GameSet } from "./types";
-import { preferredCurrency } from "./types";
+import type { GameCard, GameCardDetail, GameProvider, GameSet } from "./types";
+import { compareCardNumber, preferredCurrency } from "./types";
 import type { Enrichment } from "@/lib/types";
 
 const API = "https://api.pokemontcg.io/v2";
@@ -79,13 +79,88 @@ export const pokemonProvider: GameProvider = {
       );
       if (!res.ok) return [];
       const json = (await res.json()) as { data: ApiCard[] };
-      return json.data.map((c) => ({
+      return json.data
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          number: c.number ?? "",
+          rarity: c.rarity,
+          image: c.images?.small,
+        }))
+        // The API sorts `number` lexicographically ("10" before "2"); fix it.
+        .sort((a, b) => compareCardNumber(a.number, b.number));
+    } catch {
+      return [];
+    }
+  },
+
+  async getCard(id): Promise<GameCardDetail | null> {
+    try {
+      const res = await fetch(`${API}/cards/${encodeURIComponent(id)}`, {
+        headers: headers(),
+        next: { revalidate: 86400 },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return null;
+      const c = ((await res.json()) as { data: FullCard }).data;
+      if (!c) return null;
+      const { price, currency } = pickPrice(c);
+      return {
         id: c.id,
         name: c.name,
         number: c.number ?? "",
         rarity: c.rarity,
         image: c.images?.small,
-      }));
+        largeImage: c.images?.large ?? c.images?.small,
+        setId: c.set?.id,
+        setName: c.set?.name,
+        series: c.set?.series,
+        releaseDate: c.set?.releaseDate ? c.set.releaseDate.replaceAll("/", "-") : "",
+        types: c.types,
+        hp: c.hp,
+        artist: c.artist,
+        flavorText: c.flavorText,
+        text: (c.attacks ?? []).map((a) =>
+          [a.name, a.damage].filter(Boolean).join(" — ") + (a.text ? `: ${a.text}` : ""),
+        ),
+        price,
+        currency,
+      };
+    } catch {
+      return null;
+    }
+  },
+
+  async getPrintings(name): Promise<GameCard[]> {
+    try {
+      const q = encodeURIComponent(`name:"${name.replace(/"/g, "")}"`);
+      const res = await fetch(
+        `${API}/cards?q=${q}&pageSize=250&orderBy=set.releaseDate,number` +
+          `&select=id,name,number,rarity,images,set`,
+        { headers: headers(), next: { revalidate: 21600 }, signal: AbortSignal.timeout(15000) },
+      );
+      if (!res.ok) return [];
+      const json = (await res.json()) as { data: FullCard[] };
+      const want = name.trim().toLowerCase();
+      return json.data
+        // The API name query is a contains-match; keep only exact-name versions
+        // (so "Charizard" doesn't pull in "Charizard ex"/"Charizard VMAX").
+        .filter((c) => c.name.trim().toLowerCase() === want)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          number: c.number ?? "",
+          rarity: c.rarity,
+          image: c.images?.small,
+          setId: c.set?.id,
+          setName: c.set?.name,
+          releaseDate: c.set?.releaseDate ? c.set.releaseDate.replaceAll("/", "-") : "",
+        }))
+        .sort(
+          (a, b) =>
+            (a.releaseDate ?? "").localeCompare(b.releaseDate ?? "") ||
+            compareCardNumber(a.number, b.number),
+        );
     } catch {
       return [];
     }
@@ -148,3 +223,42 @@ type PriceCard = {
   tcgplayer?: { prices?: Record<string, { market?: number } | null> };
   cardmarket?: { prices?: { trendPrice?: number; averageSellPrice?: number } };
 };
+
+type FullCard = {
+  id: string;
+  name: string;
+  number?: string;
+  rarity?: string;
+  hp?: string;
+  types?: string[];
+  artist?: string;
+  flavorText?: string;
+  attacks?: { name: string; text?: string; damage?: string }[];
+  images?: { small?: string; large?: string };
+  set?: { id?: string; name?: string; series?: string; releaseDate?: string };
+  tcgplayer?: { prices?: Record<string, { market?: number } | null> };
+  cardmarket?: { prices?: { trendPrice?: number; averageSellPrice?: number } };
+};
+
+/** Pick a market price in the preferred currency (EUR by default), falling back. */
+function pickPrice(c: FullCard): { price?: number; currency?: string } {
+  const cm = c.cardmarket?.prices;
+  const eur =
+    typeof cm?.trendPrice === "number" && cm.trendPrice > 0
+      ? cm.trendPrice
+      : typeof cm?.averageSellPrice === "number" && cm.averageSellPrice > 0
+        ? cm.averageSellPrice
+        : undefined;
+  const usdMarkets = Object.values(c.tcgplayer?.prices ?? {})
+    .map((p) => p?.market)
+    .filter((n): n is number => typeof n === "number" && n > 0);
+  const usd = usdMarkets.length > 0 ? Math.max(...usdMarkets) : undefined;
+  if (preferredCurrency() === "EUR") {
+    if (eur !== undefined) return { price: eur, currency: "EUR" };
+    if (usd !== undefined) return { price: usd, currency: "USD" };
+  } else {
+    if (usd !== undefined) return { price: usd, currency: "USD" };
+    if (eur !== undefined) return { price: eur, currency: "EUR" };
+  }
+  return {};
+}

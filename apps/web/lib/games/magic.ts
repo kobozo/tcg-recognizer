@@ -1,6 +1,6 @@
 // Magic: The Gathering provider — Scryfall (https://scryfall.com/docs/api). Free, no key.
-import type { GameCard, GameProvider, GameSet } from "./types";
-import { preferredCurrency } from "./types";
+import type { GameCard, GameCardDetail, GameProvider, GameSet } from "./types";
+import { compareCardNumber, preferredCurrency } from "./types";
 import type { Enrichment } from "@/lib/types";
 
 const API = "https://api.scryfall.com";
@@ -22,6 +22,23 @@ type ScryfallCard = {
   rarity?: string;
   image_uris?: { small?: string; normal?: string };
   card_faces?: { image_uris?: { small?: string } }[];
+};
+
+type FullCard = {
+  id: string;
+  name: string;
+  collector_number?: string;
+  rarity?: string;
+  image_uris?: { small?: string; normal?: string };
+  set?: string;
+  set_name?: string;
+  released_at?: string;
+  type_line?: string;
+  oracle_text?: string;
+  flavor_text?: string;
+  artist?: string;
+  prices?: { usd?: string | null; usd_foil?: string | null; eur?: string | null };
+  card_faces?: { image_uris?: { small?: string; normal?: string }; oracle_text?: string }[];
 };
 
 function mapSet(s: ScryfallSet): GameSet {
@@ -95,6 +112,93 @@ export const magicProvider: GameProvider = {
             number: c.collector_number ?? "",
             rarity: c.rarity,
             image: c.image_uris?.small ?? c.card_faces?.[0]?.image_uris?.small,
+          });
+        }
+        url = json.has_more && json.next_page ? json.next_page : null;
+      }
+      return cards.sort((a, b) => compareCardNumber(a.number, b.number));
+    } catch {
+      return cards;
+    }
+  },
+
+  async getCard(id): Promise<GameCardDetail | null> {
+    try {
+      const res = await fetch(`${API}/cards/${encodeURIComponent(id)}`, {
+        headers: UA,
+        next: { revalidate: 86400 },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return null;
+      const c = (await res.json()) as FullCard;
+      const img =
+        c.image_uris?.normal ??
+        c.image_uris?.small ??
+        c.card_faces?.[0]?.image_uris?.normal;
+      const oracle = c.oracle_text ?? c.card_faces?.map((f) => f.oracle_text).filter(Boolean).join("\n");
+      const eurN = Number(c.prices?.eur);
+      const usdN = Number(c.prices?.usd ?? c.prices?.usd_foil);
+      const eur = Number.isFinite(eurN) && eurN > 0 ? eurN : undefined;
+      const usd = Number.isFinite(usdN) && usdN > 0 ? usdN : undefined;
+      let price: number | undefined;
+      let currency: string | undefined;
+      if (preferredCurrency() === "EUR") {
+        if (eur !== undefined) [price, currency] = [eur, "EUR"];
+        else if (usd !== undefined) [price, currency] = [usd, "USD"];
+      } else {
+        if (usd !== undefined) [price, currency] = [usd, "USD"];
+        else if (eur !== undefined) [price, currency] = [eur, "EUR"];
+      }
+      return {
+        id: c.id,
+        name: c.name,
+        number: c.collector_number ?? "",
+        rarity: c.rarity,
+        image: c.image_uris?.small ?? c.card_faces?.[0]?.image_uris?.small,
+        largeImage: img,
+        setId: c.set,
+        setName: c.set_name,
+        releaseDate: c.released_at ?? "",
+        types: c.type_line ? [c.type_line] : undefined,
+        artist: c.artist,
+        flavorText: c.flavor_text,
+        text: oracle ? oracle.split("\n").filter(Boolean) : undefined,
+        price,
+        currency,
+      };
+    } catch {
+      return null;
+    }
+  },
+
+  async getPrintings(name): Promise<GameCard[]> {
+    const cards: GameCard[] = [];
+    let url: string | null = `${API}/cards/search?q=${encodeURIComponent(
+      `!"${name.replace(/"/g, "")}" unique:prints`,
+    )}&order=released`;
+    try {
+      for (let page = 0; page < 4 && url; page++) {
+        const res: Response = await fetch(url, {
+          headers: UA,
+          next: { revalidate: 21600 },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) break;
+        const json = (await res.json()) as {
+          data: FullCard[];
+          has_more?: boolean;
+          next_page?: string;
+        };
+        for (const c of json.data) {
+          cards.push({
+            id: c.id,
+            name: c.name,
+            number: c.collector_number ?? "",
+            rarity: c.rarity,
+            image: c.image_uris?.small ?? c.card_faces?.[0]?.image_uris?.small,
+            setId: c.set,
+            setName: c.set_name,
+            releaseDate: c.released_at ?? "",
           });
         }
         url = json.has_more && json.next_page ? json.next_page : null;
