@@ -22,8 +22,8 @@ stages:
       nfiles: 20308
     - path: scripts/dvc-train.sh
       hash: md5
-      md5: c1dab8043a1cf838a928065e7eb10e71
-      size: 2814
+      md5: a8a9ff5a6f98291a747222f64492f077
+      size: 2891
       isexec: true
     - path: services/trainer/config.yaml
       hash: md5
@@ -31,8 +31,8 @@ stages:
       size: 1042
     - path: services/trainer/src
       hash: md5
-      md5: 8033de2fb2d6a8f6c81ad6a9600ed0a1.dir
-      size: 72302
+      md5: c2b91dcf4735aecccd3a9a75a9321e31.dir
+      size: 72310
       nfiles: 11
     params:
       params.yaml:
@@ -47,5 +47,5 @@ stages:
     outs:
     - path: ml/metrics.json
       hash: md5
-      md5: 1e304a65e5e5138ea783757fb7eeed2d
+      md5: 81c32fd5499dbaeba7bb8799b982f94a
       size: 318

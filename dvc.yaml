@@ -20,7 +20,9 @@ stages:
     deps:
       - scripts/dvc-download.sh
       - services/trainer/src/pipelines/download.py
-    always_changed: true       # downloader is resumable; let the user run on demand
+    frozen: true               # on-demand only — `dvc repro` must NOT auto-run it.
+                               # Run explicitly with `dvc repro -s download`, then
+                               # `dvc add ml/datasets/pokemon` to re-snapshot.
 
   # Reproduce the recognition model: build the pgvector index + run the
   # synthetic-photo eval harness via the trainer, parametrised from params.yaml.

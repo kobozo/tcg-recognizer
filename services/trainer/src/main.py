@@ -41,7 +41,7 @@ def load_cfg() -> dict:
     with open(CONFIG) as f:
         cfg = yaml.safe_load(f)
     # Env overrides for quick baseline sweeps (SAMPLE_SIZE, EVAL_CARDS, ...).
-    for key in ("sample_size", "eval_cards", "eval_views", "eval_seed", "embed_dim", "rerank_top_k"):
+    for key in ("game", "sample_size", "eval_cards", "eval_views", "eval_seed", "embed_dim", "rerank_top_k"):
         env = os.environ.get(key.upper())
         if env is not None and env != "":
             cfg[key] = env if key == "sample_size" and env == "all" else (

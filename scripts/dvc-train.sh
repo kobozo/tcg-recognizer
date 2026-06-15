@@ -54,7 +54,8 @@ echo "==> dvc train: game=$GAME embedder=$EMBEDDER sample_size=$SAMPLE_SIZE eval
 echo "==> ensure db + mlflow up"
 docker compose up -d db mlflow >/dev/null
 docker compose run --rm --no-deps web sh -c \
-  "npx prisma db push --skip-generate --accept-data-loss" >/dev/null 2>&1 || true
+  "npx prisma db push --skip-generate --accept-data-loss" \
+  || echo "WARN: prisma db push failed; the ModelVersion write may be skipped"
 
 echo "==> build trainer"
 docker compose build trainer >/dev/null
@@ -65,6 +66,7 @@ echo "==> run trainer (writes ml/metrics.json via /mlout mount)"
 # is best-effort and skips gracefully if the named volume isn't writable as us.
 docker compose run --rm \
   --user "$(id -u):$(id -g)" \
+  -e GAME="$GAME" \
   -e EMBEDDER="$EMBEDDER" \
   -e SAMPLE_SIZE="$SAMPLE_SIZE" \
   -e EMBED_DIM="$EMBED_DIM" \
