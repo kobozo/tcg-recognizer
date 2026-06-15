@@ -3,7 +3,7 @@ numpy
 pillow
 opencv-python-headless
 psycopg2-binary
-requests==2.32.3
+requests==2.33.0
 pyyaml==6.0.2
 onnxruntime
 # DVC core only (sub-project 4): data/pipeline versioning with a local-filesystem
