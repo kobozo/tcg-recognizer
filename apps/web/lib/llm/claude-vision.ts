@@ -4,6 +4,22 @@ import type { VisionOptions, VisionProvider } from "@/lib/llm/types";
 const DEFAULT_MODEL = "claude-opus-4-8";
 const DEFAULT_TIMEOUT_MS = 20_000;
 
+type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+/**
+ * Detect the image media type from a base64 payload's leading bytes. Anthropic
+ * rejects (HTTP 400) any image whose declared media_type doesn't match the
+ * actual bytes, so we must not hardcode it (card references are PNG, camera
+ * captures are JPEG).
+ */
+function detectMediaType(b64: string): ImageMediaType {
+  if (b64.startsWith("/9j/")) return "image/jpeg";
+  if (b64.startsWith("iVBORw0KGgo")) return "image/png";
+  if (b64.startsWith("R0lGOD")) return "image/gif";
+  if (b64.startsWith("UklGR")) return "image/webp";
+  return "image/jpeg"; // sensible default; most photo uploads are JPEG
+}
+
 /**
  * Anthropic Claude vision backend via the official `@anthropic-ai/sdk`. Sends
  * the image(s) as base64 content blocks alongside the text prompt in a single
@@ -30,7 +46,7 @@ export class ClaudeVisionProvider implements VisionProvider {
       (data) =>
         ({
           type: "image" as const,
-          source: { type: "base64" as const, media_type: "image/jpeg" as const, data },
+          source: { type: "base64" as const, media_type: detectMediaType(data), data },
         }),
     );
 

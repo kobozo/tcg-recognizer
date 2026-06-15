@@ -109,7 +109,7 @@ fully CI-safe: with `VLM_ASSIST` unset the scan path is byte-identical to before
   and **constrains the pick to the shortlist** (case-insensitive). It is gated by
   `VLM_ASSIST` and **never throws** — returns `null` on disabled / unconfigured /
   timeout / bad output, so a scan never breaks or slows down because of it.
-- **Scan wiring** (`app/api/scan/route.ts`): after predictions (and the OCR
+- **Scan wiring** (`apps/web/app/api/scan/route.ts`): after predictions (and the OCR
   fold), when enabled it reorders `name.candidates` to put the pick first, sets
   `name.value`, and stores `predictions.vlm = { pick, text, provider }`.
 
