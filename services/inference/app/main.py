@@ -235,6 +235,9 @@ async def predict(
         "set": {"value": top[2], "conf": top_sim},
         "rarity": {"value": top[4], "conf": top_sim},
         "card_number": {"value": top[3], "conf": top_sim},
+        # The exact recognized card id (e.g. "dp3-3") — lets the web enrich the
+        # EXACT card (HP/attacks/price) instead of guessing by name.
+        "card_id": top[0],
         "image_url": top[6],
         "game": game,
         "model_version": MODEL_VERSION,
