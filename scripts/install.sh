@@ -10,10 +10,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 SCHEDULE="${CRON_SCHEDULE:-0 3 * * *}"
+# Daily price refresh, offset from the retrain so they don't overlap.
+CATALOG_SCHEDULE="${CATALOG_CRON_SCHEDULE:-30 3 * * *}"
 MARKER="# tcg-recognizer-retrain"
+CATALOG_MARKER="# tcg-recognizer-catalog"
 
 remove_cron() {
-  crontab -l 2>/dev/null | grep -v "scripts/retrain.sh" | grep -v "tcg-recognizer-retrain" | crontab - 2>/dev/null || true
+  crontab -l 2>/dev/null \
+    | grep -v "scripts/retrain.sh" | grep -v "tcg-recognizer-retrain" \
+    | grep -v "scripts/catalog-sync.sh" | grep -v "tcg-recognizer-catalog" \
+    | crontab - 2>/dev/null || true
 }
 
 if [ "${1:-}" = "--uninstall" ]; then
@@ -24,6 +30,17 @@ fi
 
 # 1. env file
 [ -f .env ] || { cp .env.example .env; echo "==> created .env from .env.example"; }
+
+# 1b. ensure a catalogue-sync secret exists (the daily price cron presents it)
+if ! grep -qE '^CATALOG_SYNC_SECRET=.+' .env; then
+  gen="$(openssl rand -base64 32 2>/dev/null | tr -d '/+=' | head -c 40)"
+  if grep -qE '^CATALOG_SYNC_SECRET=' .env; then
+    sed -i "s|^CATALOG_SYNC_SECRET=.*|CATALOG_SYNC_SECRET=${gen}|" .env
+  else
+    echo "CATALOG_SYNC_SECRET=${gen}" >> .env
+  fi
+  echo "==> generated CATALOG_SYNC_SECRET"
+fi
 
 # 2. start the stack
 echo "==> starting stack (docker compose up -d --build)"
@@ -46,13 +63,21 @@ docker compose exec -T web node_modules/.bin/tsx prisma/seed.ts >/dev/null 2>&1 
 echo "==> initial retrain (builds the recognition index; downloads card images)"
 docker compose run --rm trainer || echo "WARN: initial retrain failed; see output above"
 
+# 5b. initial full catalogue sync so reads serve from the local mirror, not the API
+echo "==> initial catalogue sync (mirrors all cards + sets into the DB)"
+/usr/bin/env bash scripts/catalog-sync.sh full pokemon \
+  && echo "==> catalogue synced (see logs/catalog-sync.log)" \
+  || echo "WARN: initial catalogue sync failed; see logs/catalog-sync.log"
+
 # 6. install / refresh the cron (idempotent)
-echo "==> installing retrain cron: ${SCHEDULE}"
+echo "==> installing retrain cron: ${SCHEDULE}; catalogue price cron: ${CATALOG_SCHEDULE}"
 remove_cron
 (
   crontab -l 2>/dev/null || true
   echo "${MARKER} (auto-retrain; remove with: bash ${ROOT}/scripts/install.sh --uninstall)"
   echo "${SCHEDULE} cd ${ROOT} && /usr/bin/env bash scripts/retrain.sh"
+  echo "${CATALOG_MARKER} (daily price refresh; remove with: bash ${ROOT}/scripts/install.sh --uninstall)"
+  echo "${CATALOG_SCHEDULE} cd ${ROOT} && /usr/bin/env bash scripts/catalog-sync.sh prices pokemon"
 ) | crontab -
 
 echo
@@ -66,3 +91,6 @@ echo "  Retrains so far = ModelVersion rows. Cadence: ${SCHEDULE}"
 echo "  Change cadence: CRON_SCHEDULE='0 */6 * * *' bash scripts/install.sh"
 echo "  Remove cron:    bash scripts/install.sh --uninstall"
 echo "  Retrain logs:   ${ROOT}/logs/retrain.log"
+echo "  Catalogue:      mirrored to Postgres; daily price refresh at ${CATALOG_SCHEDULE}"
+echo "  Catalog logs:   ${ROOT}/logs/catalog-sync.log"
+echo "  Re-sync now:    bash scripts/catalog-sync.sh full pokemon"

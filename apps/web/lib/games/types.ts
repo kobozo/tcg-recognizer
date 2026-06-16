@@ -50,6 +50,50 @@ export type GameCardDetail = GameCard & {
   variants?: { name: string; price?: number; currency?: string }[];
 };
 
+/** Per-finish price variant for a card (Holofoil, Foil, Etched, …). */
+export type PriceVariant = { name: string; price?: number; currency?: string };
+
+/** Market data for a card — the only part that changes; refreshed daily. */
+export type CardPrice = {
+  eur?: number;
+  usd?: number;
+  variants?: PriceVariant[];
+};
+
+/** A set row destined for the local catalogue mirror. */
+export type CatalogSetInput = {
+  id: string;
+  game: GameId;
+  name: string;
+  series?: string;
+  total: number;
+  releaseDate?: string;
+  logo?: string;
+  symbol?: string;
+};
+
+/** A card row destined for the local catalogue mirror (static fields + price). */
+export type CatalogCardInput = {
+  id: string;
+  game: GameId;
+  name: string;
+  setId: string;
+  setName: string;
+  series?: string;
+  number: string;
+  rarity?: string;
+  supertype?: string;
+  types: string[];
+  hp?: string;
+  artist?: string;
+  flavorText?: string;
+  text: string[];
+  imageSmall?: string;
+  imageLarge?: string;
+  releaseDate?: string;
+  price: CardPrice;
+};
+
 export interface GameProvider {
   listSets(): Promise<GameSet[]>;
   getSet(id: string): Promise<GameSet | null>;
@@ -63,6 +107,35 @@ export interface GameProvider {
   searchCards(query: string, limit?: number): Promise<GameCard[]>;
   /** Look up a card by name for metadata + market value. null on miss/error. */
   enrich(name: string): Promise<import("@/lib/types").Enrichment | null>;
+
+  // --- Bulk catalogue sync (optional) ---
+  // These hit the API directly and feed the local mirror (lib/games/sync.ts).
+  // They are the ONLY read paths that should reach the network in normal
+  // operation; everything else is served from the catalogue.
+  /** Every set, for the local mirror. */
+  fetchAllSets?(): Promise<CatalogSetInput[]>;
+  /** Every card, streamed in batches to keep memory bounded. Returns the count. */
+  fetchAllCards?(onBatch: (cards: CatalogCardInput[]) => Promise<void>): Promise<number>;
+}
+
+/**
+ * Pick a market price in the preferred currency (EUR by default), falling back
+ * to the other. Shared by the providers and the catalogue read layer so the
+ * displayed price is consistent everywhere.
+ */
+export function pickPreferredPrice(price: {
+  eur?: number;
+  usd?: number;
+}): { price?: number; currency?: string } {
+  const { eur, usd } = price;
+  if (preferredCurrency() === "EUR") {
+    if (eur !== undefined) return { price: eur, currency: "EUR" };
+    if (usd !== undefined) return { price: usd, currency: "USD" };
+  } else {
+    if (usd !== undefined) return { price: usd, currency: "USD" };
+    if (eur !== undefined) return { price: eur, currency: "EUR" };
+  }
+  return {};
 }
 
 /**

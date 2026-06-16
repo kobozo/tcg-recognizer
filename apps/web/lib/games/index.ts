@@ -1,6 +1,7 @@
 import type { GameId, GameMeta, GameProvider } from "./types";
 import { pokemonProvider } from "./pokemon";
 import { magicProvider } from "./magic";
+import { withCatalog } from "./catalog";
 
 export * from "./types";
 
@@ -59,7 +60,23 @@ export function getGameMeta(id: string): GameMeta | null {
   return { ...GAMES[id].meta, available: isGameEnabled(id) };
 }
 
+// Catalogue-backed providers (DB-first reads, API fallback). Memoised per game.
+const wrapped: Partial<Record<GameId, GameProvider>> = {};
+
+/**
+ * The provider used by the app's read paths: serves from the local catalogue
+ * mirror, falling back to the live API only when the mirror is empty.
+ */
 export function getProvider(id: string): GameProvider | null {
+  if (!isGameId(id)) return null;
+  return (wrapped[id] ??= withCatalog(GAMES[id].provider, id));
+}
+
+/**
+ * The unwrapped, API-backed provider. Used by the sync jobs (which must hit the
+ * live API to populate the mirror) — never for request-path reads.
+ */
+export function getProviderRaw(id: string): GameProvider | null {
   return isGameId(id) ? GAMES[id].provider : null;
 }
 

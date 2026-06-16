@@ -12,6 +12,57 @@ enum Role {
   ADMIN
 }
 
+/// Local mirror of the (static) card catalogue, synced from the game APIs. Read
+/// paths (enrich, card/set pages) serve from here; the API is hit only by the
+/// sync jobs. Prices are refreshed separately (daily) — see priceUpdatedAt.
+model CatalogCard {
+  id          String  @id // provider card id, e.g. "dp3-3"
+  game        String
+  name        String
+  setId       String
+  setName     String
+  series      String?
+  number      String
+  rarity      String?
+  supertype   String?
+  types       String[]
+  hp          String?
+  artist      String?
+  flavorText  String?
+  text        String[] // attacks (Pokémon) / oracle lines (Magic)
+  imageSmall  String?
+  imageLarge  String?
+  releaseDate String? // YYYY-MM-DD or ""
+  // Market data — the only fields that change; refreshed daily.
+  priceEur        Float?
+  priceUsd        Float?
+  // Per-finish price breakdown ([{name, price, currency}]) for the card detail
+  // page; price-derived, so refreshed together with priceEur/priceUsd.
+  variants        Json?
+  priceUpdatedAt  DateTime?
+  syncedAt    DateTime @default(now()) @updatedAt
+
+  @@index([game, name])
+  @@index([game, setId])
+  @@index([game, setId, number])
+}
+
+/// Local mirror of the (static) set catalogue, synced from the game APIs.
+model CatalogSet {
+  id          String  @id // provider set id, e.g. "dp3"
+  game        String
+  name        String
+  series      String?
+  total       Int     @default(0)
+  releaseDate String?
+  logo        String?
+  symbol      String?
+  syncedAt    DateTime @default(now()) @updatedAt
+
+  @@index([game])
+  @@index([game, releaseDate])
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique

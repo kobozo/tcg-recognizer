@@ -1,6 +1,15 @@
 // Magic: The Gathering provider — Scryfall (https://scryfall.com/docs/api). Free, no key.
-import type { GameCard, GameCardDetail, GameProvider, GameSet } from "./types";
-import { compareCardNumber, preferredCurrency } from "./types";
+import type {
+  CardPrice,
+  CatalogCardInput,
+  CatalogSetInput,
+  GameCard,
+  GameCardDetail,
+  GameProvider,
+  GameSet,
+  PriceVariant,
+} from "./types";
+import { compareCardNumber, pickPreferredPrice, preferredCurrency } from "./types";
 import type { Enrichment } from "@/lib/types";
 
 const API = "https://api.scryfall.com";
@@ -142,40 +151,8 @@ export const magicProvider: GameProvider = {
         c.image_uris?.small ??
         c.card_faces?.[0]?.image_uris?.normal;
       const oracle = c.oracle_text ?? c.card_faces?.map((f) => f.oracle_text).filter(Boolean).join("\n");
-      const eurN = Number(c.prices?.eur);
-      const usdN = Number(c.prices?.usd ?? c.prices?.usd_foil);
-      const eur = Number.isFinite(eurN) && eurN > 0 ? eurN : undefined;
-      const usd = Number.isFinite(usdN) && usdN > 0 ? usdN : undefined;
-      let price: number | undefined;
-      let currency: string | undefined;
-      if (preferredCurrency() === "EUR") {
-        if (eur !== undefined) [price, currency] = [eur, "EUR"];
-        else if (usd !== undefined) [price, currency] = [usd, "USD"];
-      } else {
-        if (usd !== undefined) [price, currency] = [usd, "USD"];
-        else if (eur !== undefined) [price, currency] = [eur, "EUR"];
-      }
-      // Print finishes of this exact card (USD), e.g. Nonfoil / Foil / Etched.
-      const finishPrice: Record<string, string | null | undefined> = {
-        nonfoil: c.prices?.usd,
-        foil: c.prices?.usd_foil,
-        etched: c.prices?.usd_etched,
-      };
-      const finishLabel: Record<string, string> = {
-        nonfoil: "Nonfoil",
-        foil: "Foil",
-        etched: "Etched",
-      };
-      const variants = (c.finishes ?? [])
-        .filter((f) => f in finishLabel)
-        .map((f) => {
-          const n = Number(finishPrice[f]);
-          return {
-            name: finishLabel[f],
-            price: Number.isFinite(n) && n > 0 ? n : undefined,
-            currency: "USD",
-          };
-        });
+      const { variants, ...prices } = magicPrices(c);
+      const { price, currency } = pickPreferredPrice(prices);
       return {
         variants,
         id: c.id,
@@ -302,4 +279,114 @@ export const magicProvider: GameProvider = {
       return null;
     }
   },
+
+  // --- Bulk catalogue sync ---
+
+  async fetchAllSets(): Promise<CatalogSetInput[]> {
+    const res = await fetch(`${API}/sets`, {
+      headers: UA,
+      cache: "no-store",
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data: ScryfallSet[] };
+    return json.data
+      .filter((s) => (s.card_count ?? 0) > 0)
+      .map((s) => {
+        const m = mapSet(s);
+        return {
+          id: m.id,
+          game: "magic" as const,
+          name: m.name,
+          series: m.series,
+          total: m.total,
+          releaseDate: m.releaseDate,
+          logo: m.logo,
+          symbol: m.symbol,
+        };
+      });
+  },
+
+  async fetchAllCards(onBatch): Promise<number> {
+    // Scryfall publishes the full card corpus as a single downloadable JSON
+    // array ("default_cards", one object per printing). Pulling that once is far
+    // friendlier to their API than paging ~500 search requests.
+    const meta = await fetch(`${API}/bulk-data`, {
+      headers: UA,
+      cache: "no-store",
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!meta.ok) return 0;
+    const list = (await meta.json()) as { data: { type: string; download_uri: string }[] };
+    const entry = list.data.find((d) => d.type === "default_cards");
+    if (!entry) return 0;
+    const dump = await fetch(entry.download_uri, {
+      headers: UA,
+      cache: "no-store",
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!dump.ok) return 0;
+    const cards = (await dump.json()) as FullCard[];
+    let total = 0;
+    // Batch so each DB write stays bounded.
+    for (let i = 0; i < cards.length; i += 250) {
+      const batch = cards.slice(i, i + 250).map(magicCardInput);
+      await onBatch(batch);
+      total += batch.length;
+    }
+    return total;
+  },
 };
+
+/** EUR + USD market prices + per-finish variants for a Scryfall card. */
+function magicPrices(c: FullCard): CardPrice {
+  const eurN = Number(c.prices?.eur);
+  const usdN = Number(c.prices?.usd ?? c.prices?.usd_foil);
+  const eur = Number.isFinite(eurN) && eurN > 0 ? eurN : undefined;
+  const usd = Number.isFinite(usdN) && usdN > 0 ? usdN : undefined;
+  const finishPrice: Record<string, string | null | undefined> = {
+    nonfoil: c.prices?.usd,
+    foil: c.prices?.usd_foil,
+    etched: c.prices?.usd_etched,
+  };
+  const finishLabel: Record<string, string> = {
+    nonfoil: "Nonfoil",
+    foil: "Foil",
+    etched: "Etched",
+  };
+  const variants: PriceVariant[] = (c.finishes ?? [])
+    .filter((f) => f in finishLabel)
+    .map((f) => {
+      const n = Number(finishPrice[f]);
+      return {
+        name: finishLabel[f],
+        price: Number.isFinite(n) && n > 0 ? n : undefined,
+        currency: "USD",
+      };
+    });
+  return { eur, usd, variants };
+}
+
+/** Map a full Scryfall card to a catalogue row (static fields + price). */
+function magicCardInput(c: FullCard): CatalogCardInput {
+  const oracle =
+    c.oracle_text ?? c.card_faces?.map((f) => f.oracle_text).filter(Boolean).join("\n");
+  return {
+    id: c.id,
+    game: "magic",
+    name: c.name,
+    setId: c.set ?? "",
+    setName: c.set_name ?? "",
+    number: c.collector_number ?? "",
+    rarity: c.rarity,
+    types: c.type_line ? [c.type_line] : [],
+    artist: c.artist,
+    flavorText: c.flavor_text,
+    text: oracle ? oracle.split("\n").filter(Boolean) : [],
+    imageSmall: c.image_uris?.small ?? c.card_faces?.[0]?.image_uris?.small,
+    imageLarge:
+      c.image_uris?.normal ?? c.image_uris?.small ?? c.card_faces?.[0]?.image_uris?.normal,
+    releaseDate: c.released_at ?? "",
+    price: magicPrices(c),
+  };
+}
