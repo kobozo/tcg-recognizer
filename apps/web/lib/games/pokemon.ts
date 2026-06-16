@@ -232,10 +232,9 @@ export const pokemonProvider: GameProvider = {
   async fetchAllSets(): Promise<CatalogSetInput[]> {
     const out: CatalogSetInput[] = [];
     for (let page = 1; page < 50; page++) {
-      const res = await fetch(
+      const res = await fetchRetry(
         `${API}/sets?page=${page}&pageSize=250&orderBy=releaseDate` +
           `&select=id,name,series,total,printedTotal,releaseDate,images`,
-        { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(20000) },
       );
       if (!res.ok) break;
       const json = (await res.json()) as { data: ApiSet[] };
@@ -261,10 +260,9 @@ export const pokemonProvider: GameProvider = {
   async fetchAllCards(onBatch): Promise<number> {
     let total = 0;
     for (let page = 1; page < 500; page++) {
-      const res = await fetch(
+      const res = await fetchRetry(
         `${API}/cards?page=${page}&pageSize=250&orderBy=set.releaseDate,number` +
           `&select=id,name,number,rarity,supertype,types,hp,artist,flavorText,attacks,images,set,cardmarket,tcgplayer`,
-        { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(30000) },
       );
       if (!res.ok) break;
       const json = (await res.json()) as { data: FullCard[] };
@@ -277,6 +275,36 @@ export const pokemonProvider: GameProvider = {
     return total;
   },
 };
+
+/**
+ * Fetch a catalogue-sync page with retries. The public Pokémon TCG API (no key)
+ * is slow and throttles under sustained paging, so a single 30s timeout would
+ * abort the whole sync on one slow page. Retry with backoff (60s timeout) and
+ * only give up after several attempts.
+ */
+async function fetchRetry(url: string, attempts = 5): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url, {
+        headers: headers(),
+        cache: "no-store",
+        signal: AbortSignal.timeout(60000),
+      });
+      // 429/5xx are transient (rate limit / upstream hiccup) — back off and retry.
+      if (res.status === 429 || res.status >= 500) {
+        lastErr = new Error(`HTTP ${res.status}`);
+      } else {
+        return res;
+      }
+    } catch (e) {
+      lastErr = e; // timeout / network error
+    }
+    // Exponential backoff: 2s, 4s, 8s, 16s.
+    await new Promise((r) => setTimeout(r, 2000 * 2 ** i));
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("fetch failed");
+}
 
 /** EUR (Cardmarket) + USD (TCGplayer) market prices + per-finish variants. */
 function pokemonPrices(c: FullCard): CardPrice {

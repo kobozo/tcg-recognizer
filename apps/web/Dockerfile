@@ -28,4 +28,8 @@ COPY --from=build /app/node_modules ./node_modules
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s --retries=10 \
   CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
+# Regenerate the Prisma client at start so it always matches the shipped schema.
+# (Build-stage `prisma generate` can be served from a stale Docker layer when the
+# lockfile is unchanged, leaving the client missing newly-added models.) Then
+# apply migrations and start the server.
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js generate && node node_modules/prisma/build/index.js migrate deploy && node server.js"]
