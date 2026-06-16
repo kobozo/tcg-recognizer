@@ -18,7 +18,10 @@ secret=""
 if [ -f .env ]; then
   secret="$(grep -E '^CATALOG_SYNC_SECRET=' .env | head -n1 | cut -d= -f2-)"
 fi
-url="${CATALOG_SYNC_URL:-http://localhost:3000/api/catalog/sync}"
+# Default routes through the Caddy proxy (the only published port); the web
+# container's own 3000 isn't exposed on the host. 127.0.0.1 (not localhost) to
+# avoid IPv6 ::1, which Docker's published port doesn't bind.
+url="${CATALOG_SYNC_URL:-http://127.0.0.1/api/catalog/sync}"
 
 mkdir -p logs
 ts="$(date -u +%FT%TZ 2>/dev/null || date -u)"
