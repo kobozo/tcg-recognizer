@@ -1,7 +1,15 @@
 // Pokémon provider — Pokémon TCG API (https://docs.pokemontcg.io). Free; set
 // POKEMON_TCG_API_KEY for higher rate limits.
-import type { GameCard, GameCardDetail, GameProvider, GameSet } from "./types";
-import { compareCardNumber, preferredCurrency } from "./types";
+import type {
+  CardPrice,
+  CatalogCardInput,
+  CatalogSetInput,
+  GameCard,
+  GameCardDetail,
+  GameProvider,
+  GameSet,
+} from "./types";
+import { compareCardNumber, pickPreferredPrice } from "./types";
 import type { Enrichment } from "@/lib/types";
 
 const API = "https://api.pokemontcg.io/v2";
@@ -203,34 +211,10 @@ export const pokemonProvider: GameProvider = {
         signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) return null;
-      const json = (await res.json()) as { data: PriceCard[] };
+      const json = (await res.json()) as { data: FullCard[] };
       const c = json.data?.[0];
       if (!c) return null;
-
-      // EUR (Cardmarket — the European marketplace) vs USD (TCGplayer). Prefer
-      // the deployment's currency (Belgium → EUR by default).
-      const cm = c.cardmarket?.prices;
-      const eur =
-        typeof cm?.trendPrice === "number" && cm.trendPrice > 0
-          ? cm.trendPrice
-          : typeof cm?.averageSellPrice === "number" && cm.averageSellPrice > 0
-            ? cm.averageSellPrice
-            : undefined;
-      const usdMarkets = Object.values(c.tcgplayer?.prices ?? {})
-        .map((p) => p?.market)
-        .filter((n): n is number => typeof n === "number" && n > 0);
-      const usd = usdMarkets.length > 0 ? Math.max(...usdMarkets) : undefined;
-
-      let price: number | undefined;
-      let currency: string | undefined;
-      if (preferredCurrency() === "EUR") {
-        if (eur !== undefined) [price, currency] = [eur, "EUR"];
-        else if (usd !== undefined) [price, currency] = [usd, "USD"];
-      } else {
-        if (usd !== undefined) [price, currency] = [usd, "USD"];
-        else if (eur !== undefined) [price, currency] = [eur, "EUR"];
-      }
-
+      const { price, currency } = pickPreferredPrice(pokemonPrices(c));
       return {
         hp: c.hp,
         attacks: c.attacks?.map((a) => a.name),
@@ -242,21 +226,106 @@ export const pokemonProvider: GameProvider = {
       return null;
     }
   },
+
+  // --- Bulk catalogue sync ---
+
+  async fetchAllSets(): Promise<CatalogSetInput[]> {
+    const out: CatalogSetInput[] = [];
+    for (let page = 1; page < 50; page++) {
+      const res = await fetch(
+        `${API}/sets?page=${page}&pageSize=250&orderBy=releaseDate` +
+          `&select=id,name,series,total,printedTotal,releaseDate,images`,
+        { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(20000) },
+      );
+      if (!res.ok) break;
+      const json = (await res.json()) as { data: ApiSet[] };
+      if (!json.data?.length) break;
+      for (const s of json.data) {
+        const m = mapSet(s);
+        out.push({
+          id: m.id,
+          game: "pokemon",
+          name: m.name,
+          series: m.series,
+          total: m.total,
+          releaseDate: m.releaseDate,
+          logo: m.logo,
+          symbol: m.symbol,
+        });
+      }
+      if (json.data.length < 250) break;
+    }
+    return out;
+  },
+
+  async fetchAllCards(onBatch): Promise<number> {
+    let total = 0;
+    for (let page = 1; page < 500; page++) {
+      const res = await fetch(
+        `${API}/cards?page=${page}&pageSize=250&orderBy=set.releaseDate,number` +
+          `&select=id,name,number,rarity,supertype,types,hp,artist,flavorText,attacks,images,set,cardmarket,tcgplayer`,
+        { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(30000) },
+      );
+      if (!res.ok) break;
+      const json = (await res.json()) as { data: FullCard[] };
+      if (!json.data?.length) break;
+      const batch = json.data.map(pokemonCardInput);
+      await onBatch(batch);
+      total += batch.length;
+      if (json.data.length < 250) break;
+    }
+    return total;
+  },
 };
 
-type PriceCard = {
-  hp?: string;
-  attacks?: { name: string }[];
-  images?: { small?: string; large?: string };
-  tcgplayer?: { prices?: Record<string, { market?: number } | null> };
-  cardmarket?: { prices?: { trendPrice?: number; averageSellPrice?: number } };
-};
+/** EUR (Cardmarket) + USD (TCGplayer) market prices + per-finish variants. */
+function pokemonPrices(c: FullCard): CardPrice {
+  const cm = c.cardmarket?.prices;
+  const eur =
+    typeof cm?.trendPrice === "number" && cm.trendPrice > 0
+      ? cm.trendPrice
+      : typeof cm?.averageSellPrice === "number" && cm.averageSellPrice > 0
+        ? cm.averageSellPrice
+        : undefined;
+  const usdMarkets = Object.values(c.tcgplayer?.prices ?? {})
+    .map((p) => p?.market)
+    .filter((n): n is number => typeof n === "number" && n > 0);
+  const usd = usdMarkets.length > 0 ? Math.max(...usdMarkets) : undefined;
+  return { eur, usd, variants: pokemonVariants(c) };
+}
+
+/** Map a full API card to a catalogue row (static fields + price). */
+function pokemonCardInput(c: FullCard): CatalogCardInput {
+  return {
+    id: c.id,
+    game: "pokemon",
+    name: c.name,
+    setId: c.set?.id ?? "",
+    setName: c.set?.name ?? "",
+    series: c.set?.series,
+    number: c.number ?? "",
+    rarity: c.rarity,
+    supertype: c.supertype,
+    types: c.types ?? [],
+    hp: c.hp,
+    artist: c.artist,
+    flavorText: c.flavorText,
+    text: (c.attacks ?? []).map((a) =>
+      [a.name, a.damage].filter(Boolean).join(" — ") + (a.text ? `: ${a.text}` : ""),
+    ),
+    imageSmall: c.images?.small,
+    imageLarge: c.images?.large ?? c.images?.small,
+    releaseDate: c.set?.releaseDate ? c.set.releaseDate.replaceAll("/", "-") : "",
+    price: pokemonPrices(c),
+  };
+}
 
 type FullCard = {
   id: string;
   name: string;
   number?: string;
   rarity?: string;
+  supertype?: string;
   hp?: string;
   types?: string[];
   artist?: string;
@@ -303,23 +372,5 @@ function pokemonVariants(c: FullCard): { name: string; price?: number; currency?
 
 /** Pick a market price in the preferred currency (EUR by default), falling back. */
 function pickPrice(c: FullCard): { price?: number; currency?: string } {
-  const cm = c.cardmarket?.prices;
-  const eur =
-    typeof cm?.trendPrice === "number" && cm.trendPrice > 0
-      ? cm.trendPrice
-      : typeof cm?.averageSellPrice === "number" && cm.averageSellPrice > 0
-        ? cm.averageSellPrice
-        : undefined;
-  const usdMarkets = Object.values(c.tcgplayer?.prices ?? {})
-    .map((p) => p?.market)
-    .filter((n): n is number => typeof n === "number" && n > 0);
-  const usd = usdMarkets.length > 0 ? Math.max(...usdMarkets) : undefined;
-  if (preferredCurrency() === "EUR") {
-    if (eur !== undefined) return { price: eur, currency: "EUR" };
-    if (usd !== undefined) return { price: usd, currency: "USD" };
-  } else {
-    if (usd !== undefined) return { price: usd, currency: "USD" };
-    if (eur !== undefined) return { price: eur, currency: "EUR" };
-  }
-  return {};
+  return pickPreferredPrice(pokemonPrices(c));
 }
