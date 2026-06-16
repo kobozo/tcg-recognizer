@@ -100,8 +100,12 @@ export function withCatalog(provider: GameProvider, game: GameId): GameProvider 
       return rows.length ? rows : provider.getPrintings(name);
     },
     async searchCards(query, limit) {
-      const rows = await catalogSearchCards(game, query, limit);
-      return rows.length ? rows : provider.searchCards(query, limit);
+      // A short query legitimately yields nothing (not a catalogue miss), so
+      // don't fall through to a live API call for it.
+      const q = query.trim();
+      if (q.length < 2) return [];
+      const rows = await catalogSearchCards(game, q, limit);
+      return rows.length ? rows : provider.searchCards(q, limit);
     },
     async enrich(name) {
       return (await catalogEnrich(game, name)) ?? provider.enrich(name);
