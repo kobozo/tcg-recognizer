@@ -259,18 +259,35 @@ export const pokemonProvider: GameProvider = {
 
   async fetchAllCards(onBatch): Promise<number> {
     let total = 0;
-    for (let page = 1; page < 500; page++) {
+    let expected = Infinity; // API's totalCount, once known
+    let page = 1;
+    let emptyTries = 0;
+    while (page <= 500) {
       const res = await fetchRetry(
         `${API}/cards?page=${page}&pageSize=250&orderBy=set.releaseDate,number` +
           `&select=id,name,number,rarity,supertype,types,hp,artist,flavorText,attacks,images,set,cardmarket,tcgplayer`,
       );
       if (!res.ok) break;
-      const json = (await res.json()) as { data: FullCard[] };
-      if (!json.data?.length) break;
-      const batch = json.data.map(pokemonCardInput);
-      await onBatch(batch);
-      total += batch.length;
-      if (json.data.length < 250) break;
+      const json = (await res.json()) as { data?: FullCard[]; totalCount?: number };
+      if (typeof json.totalCount === "number" && json.totalCount > 0) {
+        expected = json.totalCount;
+      }
+      const data = json.data ?? [];
+      if (data.length === 0) {
+        // Under sustained paging the API sometimes returns 200 with an empty
+        // page (a throttle hiccup). Only treat empty as "done" once we've
+        // actually collected everything; otherwise back off and retry the SAME
+        // page rather than silently truncating the catalogue.
+        if (total >= expected) break;
+        if (++emptyTries > 6) break;
+        await new Promise((r) => setTimeout(r, 2000 * 2 ** Math.min(emptyTries, 4)));
+        continue;
+      }
+      emptyTries = 0;
+      await onBatch(data.map(pokemonCardInput));
+      total += data.length;
+      if (total >= expected) break;
+      page++;
     }
     return total;
   },
